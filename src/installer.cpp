@@ -12,12 +12,12 @@
 #include <cctype>
 #include <cstdlib>
 
-namespace claudeincus {
+namespace cccu {
 namespace fs = std::filesystem;
 
 namespace {
 
-constexpr const char* kBootstrapImage = "claudeincus-empty";
+constexpr const char* kBootstrapImage = "cccu-empty";
 
 // Removes a staging directory when it goes out of scope, success or not.
 struct ScopedDir {
@@ -104,7 +104,7 @@ Result prepare_host(Options& o) {
     // The size that was asked: the container gets its own btrfs storage of exactly that size (a loop-backed
     // pool, so the size is enforced), mounted with the chosen compression.
     if (!o.container_size.empty() && o.pool.empty()) {
-        const std::string pool = "claudeincus";
+        const std::string pool = "cccu";
         if (std::find(pools.begin(), pools.end(), pool) == pools.end()) {
             step("Creating the container storage: btrfs, " + o.container_size +
                  (o.compression.empty() ? std::string() : ", compression " + o.compression));
@@ -132,7 +132,7 @@ Result prepare_host(Options& o) {
 // ---- container creation -----------------------------------------------------------------
 
 Result create_direct(const Options& o) {
-    ScopedDir work(fs::path(o.staging) / "claudeincus-bootstrap");
+    ScopedDir work(fs::path(o.staging) / "cccu-bootstrap");
     if (auto r = incus::ensure_empty_image(kBootstrapImage, work.path); !r) return r;
     if (auto r = incus::init(o.name, kBootstrapImage, {profiles::name(o.display)}, o.pool); !r) return r;
 
@@ -148,7 +148,7 @@ Result create_direct(const Options& o) {
 }
 
 Result create_import(const Options& o) {
-    ScopedDir stage(fs::path(o.staging) / ("claudeincus-" + o.name + "-stage"));
+    ScopedDir stage(fs::path(o.staging) / ("cccu-" + o.name + "-stage"));
     const fs::path root = stage.path / "rootfs";
     if (!dry_run()) {
         std::error_code ec;
@@ -164,14 +164,14 @@ Result create_import(const Options& o) {
     step("Packing and importing as an Incus image");
     const fs::path tarball = stage.path / "image.tar";
     if (!dry_run()) {
-        if (auto r = write_text(stage.path / "metadata.yaml", incus::image_metadata("claudeincus clone " + o.name)); !r) return r;
+        if (auto r = write_text(stage.path / "metadata.yaml", incus::image_metadata("cccu clone " + o.name)); !r) return r;
     }
     if (!run({"tar", "-C", stage.path.string(), "--numeric-owner", "--xattrs", "--xattrs-include=*", "--acls",
               "-cf", tarball.string(), "metadata.yaml", "rootfs"})
              .ok()) {
         return fail("could not pack the staged system");
     }
-    const std::string alias = "claudeincus-" + o.name;
+    const std::string alias = "cccu-" + o.name;
     if (auto r = incus::import_image(tarball, alias); !r) return r;
     auto created = incus::init(o.name, alias, {profiles::name(o.display)}, o.pool);
     static_cast<void>(incus::delete_image(alias));  // the image is only a transport
@@ -211,7 +211,7 @@ Result make_immutable(const Options& o) {
 }
 
 // Dumps what is needed to see why the desktop container shows no login screen. Everything
-// goes to the screen and to /var/log/claudeincus/container.log.
+// goes to the screen and to /var/log/cccu/container.log.
 void diagnose(const std::string& name) {
     step("Diagnostics for '" + name + "'");
     const std::vector<std::vector<std::string>> checks = {
@@ -231,7 +231,7 @@ void diagnose(const std::string& name) {
          "-u", "sddm", "-u", "plasmalogin", "-u", "systemd-logind"},
     };
     for (const auto& argv : checks) run(argv);
-    info("Host side: systemctl status display-manager  /  journalctl -u claudeincus-firstboot");
+    info("Host side: systemctl status display-manager  /  journalctl -u cccu-firstboot");
 }
 
 void print_next_steps(const Options& o, bool started) {
@@ -261,7 +261,7 @@ void print_next_steps(const Options& o, bool started) {
 }  // namespace
 
 Result create_container(Options o) {
-    if (!is_root()) return fail("This must run as root: sudo claudeincus-installer");
+    if (!is_root()) return fail("This must run as root: sudo cccu");
     if (!valid_instance_name(o.name)) {
         return fail("Invalid container name '" + o.name + "' (letters, digits and '-', must start with a letter).");
     }
@@ -318,7 +318,7 @@ Result create_container(Options o) {
 }
 
 Result setup_running_system(Options o) {
-    if (!is_root()) return fail("This must run as root: sudo claudeincus-installer");
+    if (!is_root()) return fail("This must run as root: sudo cccu");
     if (o.name.empty()) o.name = "desktop";
     if (!valid_instance_name(o.name)) {
         return fail("Invalid container name '" + o.name + "' (letters, digits and '-', must start with a letter).");
@@ -375,9 +375,9 @@ Result setup_running_system(Options o) {
 }
 
 Result export_image(const Options& o) {
-    if (!is_root()) return fail("This must run as root: sudo claudeincus-installer --export <file>");
+    if (!is_root()) return fail("This must run as root: sudo cccu --export <file>");
     if (auto r = install_missing_tools({}, false); !r) return r;
     return sources::export_host(o, o.export_path);
 }
 
-}  // namespace claudeincus
+}  // namespace cccu

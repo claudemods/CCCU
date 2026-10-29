@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(claudeincus-installer VERSION 3.0.0 DESCRIPTION "Clone Arch into an Incus container with KDE" LANGUAGES CXX)
+project(cccu VERSION 3.0.0 DESCRIPTION "Claudemods Container Creator Unity" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,8 +9,9 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_executable(claudeincus-installer
+add_executable(cccu
   src/main.cpp
+  src/menu.cpp
   src/util.cpp
   src/proc.cpp
   src/config.cpp
@@ -23,7 +24,8 @@ add_executable(claudeincus-installer
   src/rootfs.cpp
   src/installer.cpp
 )
-target_include_directories(claudeincus-installer PRIVATE src)
-target_compile_options(claudeincus-installer PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(cccu PRIVATE src)
+target_compile_definitions(cccu PRIVATE CCCU_VERSION="${PROJECT_VERSION}")
+target_compile_options(cccu PRIVATE -Wall -Wextra -Wpedantic)
 
-install(TARGETS claudeincus-installer RUNTIME DESTINATION bin)
+install(TARGETS cccu RUNTIME DESTINATION bin)

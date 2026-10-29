@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace claudeincus::sources {
+namespace cccu::sources {
 
 // rsync exclude patterns (relative to /) for cloning the live system.
 std::vector<std::string> clone_excludes(const Options& options);
@@ -38,4 +38,4 @@ std::vector<std::string> required_tools(const Options& options);
 // Writes the running system to a tar image (.tar, .tar.zst, .tar.xz, .tar.gz) for another machine.
 Result export_host(const Options& options, const std::filesystem::path& out);
 
-}  // namespace claudeincus::sources
+}  // namespace cccu::sources

@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 
-namespace claudeincus::sources {
+namespace cccu::sources {
 namespace fs = std::filesystem;
 
 namespace {
@@ -189,4 +189,4 @@ Result clone_host(const Options& options, const fs::path& root) {
 
 }  // namespace
 
-}  // namespace claudeincus::sources
+}  // namespace cccu::sources

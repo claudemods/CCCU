@@ -6,7 +6,7 @@
 #include <chrono>
 #include <thread>
 
-namespace claudeincus::incus {
+namespace cccu::incus {
 namespace fs = std::filesystem;
 
 namespace {
@@ -118,7 +118,7 @@ Result ensure_profile(const std::string& name, const std::string& yaml) {
         info("(dry run) profile " + name + " would be set to:\n" + yaml);
         return {};
     }
-    const fs::path tmp = fs::temp_directory_path() / ("claudeincus-profile-" + name + ".yaml");
+    const fs::path tmp = fs::temp_directory_path() / ("cccu-profile-" + name + ".yaml");
     if (auto written = write_text(tmp, yaml); !written) return written;
     RunOptions options;
     options.stdin_file = tmp;
@@ -176,7 +176,7 @@ Result ensure_empty_image(const std::string& alias, const fs::path& workdir) {
     std::error_code ec;
     fs::create_directories(workdir / "rootfs", ec);
     if (ec) return fail("cannot create " + (workdir / "rootfs").string());
-    if (auto w = write_text(workdir / "metadata.yaml", image_metadata("claudeincus empty bootstrap")); !w) return w;
+    if (auto w = write_text(workdir / "metadata.yaml", image_metadata("cccu empty bootstrap")); !w) return w;
     const fs::path tarball = workdir / "empty.tar";
     if (!run({"tar", "-C", workdir.string(), "-cf", tarball.string(), "metadata.yaml", "rootfs"}).ok()) {
         return fail("could not build bootstrap image");
@@ -184,4 +184,4 @@ Result ensure_empty_image(const std::string& alias, const fs::path& workdir) {
     return import_image(tarball, alias);
 }
 
-}  // namespace claudeincus::incus
+}  // namespace cccu::incus

@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace claudeincus::incus {
+namespace cccu::incus {
 
 // True when `incus list` works; tries to start/enable the service once when it does not.
 bool daemon_ready();
@@ -44,4 +44,4 @@ Result ensure_empty_image(const std::string& alias, const std::filesystem::path&
 // metadata.yaml for an image built from a staged rootfs.
 std::string image_metadata(const std::string& description);
 
-}  // namespace claudeincus::incus
+}  // namespace cccu::incus

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <map>
 
-namespace claudeincus::distro {
+namespace cccu::distro {
 namespace fs = std::filesystem;
 
 namespace {
@@ -172,4 +172,4 @@ std::string initramfs_and_boot_script(Family family) {
     }
 }
 
-}  // namespace claudeincus::distro
+}  // namespace cccu::distro

@@ -1,287 +1,223 @@
-<p align="center">
-<img src="https://i.postimg.cc/JhMRf2RZ/claudemods-03-17-2025.gif">
+# CCCU - Claudemods Container Creator Unity
 
-<div align="center">
+Clone the Linux system you already run into an **Incus system container** with its own sized (and optionally
+compressed and immutable) storage, and boot straight into its KDE Plasma desktop on a minimal tty host.
 
-  <a href="https://www.linux.org" target="_blank"><img src="https://img.shields.io/badge/OS-Linux-e06c75?style=for-the-badge&logo=linux" /></a>
-  <a href="https://isocpp.org" target="_blank"><img src="https://img.shields.io/badge/LANG-C++23-00599C?style=for-the-badge&logo=cplusplus" /></a>
-  <a href="https://linuxcontainers.org/incus/" target="_blank"><img src="https://img.shields.io/badge/CONTAINERS-Incus-3b82f6?style=for-the-badge&logo=linuxcontainers&logoColor=white" /></a>
-  <a href="https://kde.org/plasma-desktop/" target="_blank"><img src="https://img.shields.io/badge/DESKTOP-KDE_Plasma-1d99f3?style=for-the-badge&logo=kde&logoColor=white" /></a>
+![Language](https://img.shields.io/badge/language-C%2B%2B23-00599C?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Linux-e06c75?style=flat-square)
+![Containers](https://img.shields.io/badge/containers-Incus-3b82f6?style=flat-square)
+![Status](https://img.shields.io/badge/status-experimental-orange?style=flat-square)
 
-  <a href="https://archlinux.org" target="_blank"><img src="https://img.shields.io/badge/DISTRO-Arch-56b6c2?style=for-the-badge&logo=arch-linux" /></a>
-  <a href="https://ubuntu.com/" target="_blank"><img src="https://img.shields.io/badge/DISTRO-Ubuntu-E95420?style=for-the-badge&logo=Ubuntu" /></a>
-  <a href="https://www.debian.org" target="_blank"><img src="https://img.shields.io/badge/DISTRO-Debian-CE0058?style=for-the-badge&logo=Debian" /></a>
-  <a href="https://getfedora.org" target="_blank"><img src="https://img.shields.io/badge/DISTRO-Fedora-51A2DA?style=for-the-badge&logo=fedora" /></a>
-  <a href="https://www.opensuse.org" target="_blank"><img src="https://img.shields.io/badge/DISTRO-openSUSE-73BA25?style=for-the-badge&logo=opensuse" /></a>
-  <a href="https://linuxmint.com" target="_blank"><img src="https://img.shields.io/badge/DISTRO-Linux_Mint-87CF3E?style=for-the-badge&logo=linuxmint&logoColor=white" /></a>
+## Contents
 
-  <a href="https://claude.com/claude-code" target="_blank">
-    <img src="https://img.shields.io/badge/Built_Using-Claude_Code-D97757?style=for-the-badge&logo=claude&logoColor=white" alt="Built Using Claude Code">
-  </a>
+1. [Overview](#overview)
+2. [Quick start](#quick-start)
+3. [The interface](#the-interface)
+4. [Build](#build)
+5. [Usage](#usage)
+6. [Container storage](#container-storage)
+7. [Supported systems](#supported-systems)
+8. [Logging](#logging)
+9. [Source layout](#source-layout)
+10. [FAQ](#faq)
+11. [Status and roadmap](#status-and-roadmap)
 
-  ## [ Guide ](#-usage)
+## Overview
 
-  ## [ Support Me ](https://www.paypal.com/paypalme/claudemods?country.x=GB&locale)
-
-</div>
-
-# 🐧 Claudemods Container Creator Unity
-
-> **Create Incus system containers from cloned Linux systems** — clone the Linux you already run, put it in a
-> container with its own sized (and optionally compressed and immutable) storage, and boot straight into its
-> KDE desktop on a tiny tty host. 🌊 *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta,
-> Systemback and father Knoppix!*
-
----
-
-## ✨ What is it?
-
-You have a Linux system you love — your **desktop, your apps, your settings**. This tool:
-
-1. 📸 **Clones** it (a running system, or an image made with `--export`),
-2. 📦 **Turns it into an Incus system container** (a full systemd system that shares the host kernel, **not** a VM),
-3. 🖥️ **Sets up a small tty host** under it — on a fresh drive, or on the machine you are running right now,
-4. 🔑 **Logs you in automatically** into the container's KDE Plasma desktop (or shows a login screen, your choice).
+CCCU takes a Linux system - a running machine, or an image made with `--export` - and turns it into an Incus
+system container: a full systemd system that shares the host kernel (it is **not** a virtual machine, so GPU,
+input and sound work natively). The container is hosted on a small tty system, either on a freshly partitioned
+drive or on the machine you are running now. The configured user is logged in automatically into the
+container's KDE Plasma session.
 
 ```
- drive / running system
-  ├─ 🥾 EFI boot (FAT32, GRUB)              (drive install)
-  └─ 🐧 tty host  ── Incus ── SDDM + cage
-          └─ 📦 container "desktop"  ← your cloned Linux: KDE Plasma and all your apps
-                 └─ own btrfs storage: sized by you, compressed, optionally immutable 🔒
+drive / running system
+ +- EFI boot (FAT32, GRUB)                (drive install only)
+ +- tty host --- Incus --- SDDM + cage
+        +- container "desktop"            your cloned Linux: KDE Plasma and all your apps
+               +- own btrfs storage       sized by you, compressed, optionally immutable
 ```
 
----
-
-## ⚡ Quick start
+## Quick start
 
 ```bash
-# 1️⃣ on the machine you want to clone
-sudo ./claudeincus-installer --export desktop.tar.zst
+# 1. on the machine you want to clone
+sudo cccu --export desktop.tar.zst
 
-# 2️⃣ on the machine that will host the container (or boot an Arch live ISO and pick option 1 to wipe a drive)
-sudo ./claudeincus-installer          # → 2  Set up the container on this running system
+# 2. on the machine that will host the container
+#    (or boot an Arch live ISO and choose "Install to a drive" to wipe a drive)
+sudo cccu
 ```
 
-That is it — it asks the rest like a normal installer. 🎉
+## The interface
 
-## 🖼️ What the installer looks like
+Running `cccu` without arguments opens the main menu. Each mode then shows a **settings screen**: every setting
+is a row with a status box - **green `SET`** when it has a value, **red `NOT SET`** when a required value is
+still missing. Type a row number to change it, `S` to start (only possible when nothing is red), `Q` to quit.
 
 ```
-░█████╗░██╗░░░░░░█████╗░██║░░░██╗██████╗░███████╗███╗░░░███╗░█████╗░██████╗░░██████╗
-██╔══██╗██║░░░░░██╔══██╗██║░░░██║██╔══██╗██╔════╝████╗░████║██╔══██╗██╔══██╗██╔════╝
-██║░░╚═╝██║░░░░░███████║██║░░░██║██║░░██║█████╗░░██╔████╔██║██║░░██║██║░░██║╚█████╗░
-██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗
-╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝
-░╚════╝░╚══════╝╚═╝░░╚═╝░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░
-claudemods container creator unity v1.0 29-10-2026
-Sailing The Seven Seas like Penguin's Eggs Remastersys, Refracta, Systemback and father Knoppix!
-
-1. Install to a drive (wipe it: EFI boot + tty host + desktop container)
-2. Set up the container on this running system (installs what the host needs)
-3. Export this machine as a desktop image
-Choose (1-3) [1]:
++- INSTALL TO A DRIVE ---------------------------------------------------------+
+|  #  SETTING                VALUE                             STATUS          |
++------------------------------------------------------------------------------+
+|  1  Target drive (WIPED)   /dev/sda                           [   SET   ]    |
+|  2  Desktop image          -                                  [ NOT SET ]    |
+|  3  tty host system        live ISO image (default)           [   SET   ]    |
+|  ...                                                                         |
++------------------------------------------------------------------------------+
+|  [ MISSING ]  1 required setting not set yet                                 |
++------------------------------------------------------------------------------+
 ```
 
-🔴 banner · 🟢 *what is happening* · 🌲 dark green = *what the commands print* (the commands themselves stay hidden, but are kept in the log).
+While an installation runs, every step prints a header with a counter (`[3/12]`), an overall progress bar and
+the elapsed time. A live status line (spinner, step time, total time) stays at the bottom and keeps moving even
+while a long command is silent. Messages carry level tags - `[ INFO ]`, `[  OK  ]`, `[ WARN ]`, `[ FAIL ]` -
+and what the commands print is shown in dark green. Colour and the live line switch off automatically when the
+output is not a terminal or `NO_COLOR` is set.
 
----
+**First boot after an installation.** The `cccu-firstboot` service runs on a real terminal (VT1), so the same
+progress display appears live while the container is created; the login console returns when it finishes. The
+output is also available with `journalctl -u cccu-firstboot -f`.
 
-## 🚀 Features
+## Build
 
-| | |
-|---|---|
-| 🎨 **Interactive installer** | red claudemods banner, green status text, dark green command output — the commands themselves stay hidden |
-| 🧭 **Normal-installer questions** | hostname, username, filesystem, container name… no silent guesses |
-| 📏 **Container size you choose** | **no default** — the installer hints a size from the image you give it, then asks |
-| 🗜️ **Compression choice** | zstd `22 / 15 / 9 / 3`, zlib `9`, lzo or none — applied to the container's btrfs storage (and a btrfs host) |
-| 🔒 **Optional immutable container** | system mounted **read-only**, `/etc /var /home /root /opt /srv /usr/local` stay writable |
-| 🔑 **Auto-login, always** | your user goes straight into the desktop — there is no login screen and no option to turn it off |
-| 🖥️ **Running-system mode** | set up the container on the machine you are on (a tty system) — the host's dependencies are installed for you |
-| 💾 **Drive mode** | wipes a drive: GPT, EFI + system partition (ext4 or btrfs), GRUB, Incus, first-boot container creation |
-| 📤 **Export** | write any running Linux as a `.tar.zst` image to clone elsewhere |
-| 🌍 **Multi-distro hosts** | Arch, Debian and Fedora families and openSUSE — package manager, initramfs and GRUB picked automatically |
-| 📜 **Everything logged** | every command and its output is kept in `/var/log/claudeincus/` |
-
----
-
-## 🐧 Supported systems
-
-**20 systems are supported** (7 more are recognised and refused with a reason). The installer needs **systemd** inside the tty host and inside the container (units, logind, the first-boot service).
-
-| Family | Systems | Package manager | Status |
-|---|---|---|---|
-| 🏹 **Arch** | Arch, CachyOS, EndeavourOS, Garuda, ArcoLinux, Manjaro | `pacman` | ✅ primary target |
-| 🍥 **Debian** | Debian, Ubuntu, Kubuntu, KDE neon, Linux Mint, Pop!_OS, MX Linux¹ | `apt` | 🧪 implemented, needs field testing |
-| 🎩 **Fedora** | Fedora, CentOS, AlmaLinux, Rocky Linux, RHEL, Nobara² | `dnf` | 🧪 implemented, needs field testing |
-| 🦎 **openSUSE** | Leap, Tumbleweed | `zypper` | 🧪 implemented, needs field testing |
-| ⛔ **Not supported** | NixOS, Gentoo, Slackware, Void, Devuan, KDE Linux, Artix | — | no systemd, or no installable package tree |
-
-¹ MX Linux only when it boots with systemd (it often defaults to sysvinit). ² Incus comes from Fedora, EPEL or COPR depending on the release.
-
-The installer **detects** the system from `/etc/os-release` and refuses an unsupported one with the reason, before it touches your drive.
-
----
-
-## 🛠️ Build
-
-Needs GCC 14+ (or Clang 17+) with **C++23** and CMake 3.25+. No other libraries.
+Requires GCC 14+ (or Clang 17+) with C++23 and CMake 3.25+. No other libraries.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-sudo ./build/claudeincus-installer
+sudo ./build/cccu
 ```
 
----
+## Usage
 
-## 📖 Usage
+| Menu entry | What it does |
+|---|---|
+| 1. Install to a drive | Wipes a drive: GPT, EFI + system partition (ext4 or btrfs), GRUB, Incus, and creates the container on the first boot |
+| 2. Set up on this system | Installs what the host needs (Incus, `btrfs-progs`, SDDM, `cage`, GPU and audio packages) with the system's own package manager, creates the user and the container. Reboot afterwards: SDDM becomes the display manager |
+| 3. Export this machine | Writes the running system as a `.tar.zst` image to clone elsewhere |
+
+Everything can also be given on the command line; `--yes` runs unattended without the menu.
 
 ```bash
-sudo ./build/claudeincus-installer
+sudo cccu install --drive /dev/sda --image desktop.tar.zst --user alice --size 60 --compress zstd:22 --yes
 ```
 
-```
-1. Install to a drive (wipe it: EFI boot + tty host + desktop container)
-2. Set up the container on this running system (installs what the host needs)
-3. Export this machine as a desktop image
-```
-
-### 1️⃣ Export your system (once, on the machine you want to clone)
-
-```bash
-sudo ./build/claudeincus-installer --export desktop.tar.zst
-```
-
-### 2️⃣ Install to a drive (boot an Arch live ISO in UEFI mode)
-
-Menu option **1**, or:
-
-```bash
-sudo ./claudeincus-installer install --drive /dev/sda --image desktop.tar.zst --user YOURUSER --size 60 --compress zstd:22
-```
-
-You are asked, like a normal installer: **drive → image → tty host source → hostname → user in the clone → tty host username → filesystem → container name → container size → compression → immutable**.
-
-### 3️⃣ Set up from a running system (a tty system)
-
-Menu option **2**. Your current system becomes the container host:
-
-* 📦 installs what the host needs with **its own package manager** — Incus, `btrfs-progs`, SDDM, `cage`, GPU and audio packages (installed ones are skipped),
-* 👤 creates the desktop user and gives it Incus access,
-* 🔧 configures the Container Plasma session (and auto-login),
-* 🧊 creates the container from an image, **or by cloning this running system** (`host`).
-
-> ℹ️ SDDM becomes the display manager at the next boot — reboot after the setup.
-
-### 🧰 Options
-
-| Option | |
+| Option | Description |
 |---|---|
 | `--drive <dev>` | drive to wipe (install mode) |
 | `--image <file>` | system image (`.tar` `.tar.zst` `.tar.xz` `.tar.gz`, squashfs, erofs) |
 | `--clone-host` | clone the running machine instead of an image |
-| `--hostname <name>` | hostname of the new tty system |
-| `--user <name>` | the account on the **tty host** — **required**: created if missing, added to `incus-admin`, logged in automatically |
-| `--container-user <name>` | the user **inside the cloned system** whose desktop runs (default: same as `--user`; the installer lists the clone's users) |
-| `--size <N>[GiB]` | container disk size — there is **no default** |
+| `--hostname <name>` | hostname of the new tty system (default `cccu`) |
+| `--user <name>` | account on the tty host: created if missing, added to `incus-admin`, logged in automatically |
+| `--container-user <name>` | user inside the cloned system whose desktop runs (default: same as `--user`) |
+| `--size <N>[GiB]` | container disk size - there is no default |
 | `--compress <level>` | `zstd:22` `zstd:15` `zstd:9` `zstd:3` `zlib:9` `lzo` `none` |
 | `--immutable` | mount the container's system read-only |
 | `--fs ext4\|btrfs` | host system filesystem |
-| `--keep-kernel` `--keep-caches` `--no-start` `--dry-run` `-y` | see `--help` |
+| `--keep-kernel` `--keep-caches` `--no-start` `--dry-run` `--yes` | see `cccu --help` |
 
----
+## Container storage
 
-## 🧊 Container storage
-
-### 📏 Size
-
-The container gets **its own btrfs storage pool** (a loop-backed pool, so the size is really enforced). The installer reads your image and tells you:
+The container gets its **own btrfs storage pool** (loop-backed, so the size is enforced). When you choose the
+size, CCCU reads the image and suggests one:
 
 ```
 Your image is 4.2 GiB (zstd-compressed tar); unpacked it needs roughly 12.6 GiB.
 Leave room for updates and new apps: about 19 GiB or more is a sensible size.
 ```
 
-…and then asks. Nothing is pre-selected.
-
-### 🗜️ Compression
-
-Applied as btrfs mount options on the container's pool (and on the host when it is btrfs).
-
-| Choice | |
+| Compression | Notes |
 |---|---|
-| `zstd:22` | strongest ⭐ |
-| `zstd:15` | very strong |
-| `zstd:9`, `zstd:3` | balanced / fast |
+| `zstd:22` | strongest (default in the menu) |
+| `zstd:15`, `zstd:9`, `zstd:3` | strong, balanced, fast |
 | `zlib:9`, `lzo` | alternatives |
 | `none` | no compression |
 
-### 🔒 Immutable
-
-With `--immutable` the container's root disk is read-only. `/etc`, `/var`, `/home`, `/root`, `/opt`, `/srv` and `/usr/local` live on their own volumes and stay writable; `/tmp` is a tmpfs. To update the system:
+With **immutable** enabled the container's root disk is read-only. `/etc`, `/var`, `/home`, `/root`, `/opt`,
+`/srv` and `/usr/local` live on their own volumes and stay writable. To update the system:
 
 ```bash
-incus config device set desktop root readonly=false   # then restart the container, update, and set it back to true
+incus config device set desktop root readonly=false   # restart, update, then set it back to true
 ```
 
----
+## Supported systems
 
-## 🔎 What happens to the cloned system
+The installer needs systemd inside the tty host and inside the container, and detects the system from
+`/etc/os-release`; an unsupported one is refused with the reason before anything is changed.
 
-empty `fstab`, `mtab` → `/proc/self/mounts`, fresh `machine-id`, hostname, `hosts` · `CheckSpace` off, initramfs hooks neutralised · host-only units masked (remount-fs, modules-load, audit, incus, …) · NetworkManager kept, else systemd-networkd on `eth0` · the session sockets (Wayland, PipeWire, Pulse) are proxied in at login.
+| Family | Systems | Package manager | Status |
+|---|---|---|---|
+| Arch | Arch, CachyOS, EndeavourOS, Garuda, ArcoLinux, Manjaro | `pacman` | primary target |
+| Debian | Debian, Ubuntu, Kubuntu, KDE neon, Linux Mint, Pop!_OS, MX Linux (systemd boot only) | `apt` | implemented, needs field testing |
+| Fedora | Fedora, CentOS, AlmaLinux, Rocky Linux, RHEL, Nobara | `dnf` | implemented, needs field testing |
+| openSUSE | Leap, Tumbleweed | `zypper` | implemented, needs field testing |
+| Not supported | NixOS, Gentoo, Slackware, Void, Devuan, KDE Linux, Artix | - | no systemd, or no installable package tree |
 
-## 🪵 Logs
+## Logging
 
-| File | |
+Every run writes a structured log to `/var/log/cccu/`:
+
+| File | Content |
 |---|---|
-| `/var/log/claudeincus/install.log` | the drive install |
-| `/var/log/claudeincus/container.log` | container creation + diagnostics |
-| `/var/log/claudeincus/export.log` | exports |
+| `install.log` | the drive installation |
+| `container.log` | container creation (including the first-boot run) and diagnostics |
+| `export.log` | exports |
 
-Every command and its output is kept in the log; on screen the **commands are hidden**, what they print is **dark green** and what is happening is **green**.
+One record per line - `date time LEVEL text`:
 
-## 🗂️ Source layout (`src/`)
+```
+============================================================================
+ CCCU 3.0.0  -  Claudemods Container Creator Unity
+ started : 2026-10-29 14:03:11.482
+ host    : live
+ command : cccu install --drive /dev/sda --image desktop.tar.zst --yes
+============================================================================
+2026-10-29 14:03:12.044 STEP  [2/12] Partitioning and formatting /dev/sda
+2026-10-29 14:03:12.051 CMD   #5 wipefs -a /dev/sda
+2026-10-29 14:03:12.402 OUT   #5 | /dev/sda: 2 bytes were erased at offset 0x00000200
+2026-10-29 14:03:12.440 DONE  #5 exit=0 duration=0.39s
+2026-10-29 14:03:12.441 FAIL  #6 exit=1 duration=0.02s
+2026-10-29 14:41:50.007 SUMMARY result=failed exit=1 steps=7 commands=48 failed_commands=1 warnings=2 errors=1 duration=2318.5s
+```
 
-`main` CLI + questions · `hostinstall` drive install · `drive` partitioning · `installer` container pipeline + running-system setup · `distro` family detection and per-distro commands · `incus` Incus wrapper · `profiles` container profile · `sources` image/clone/export · `rootfs` system adaptation · `proc` / `util` / `config` helpers
+Levels: `INFO` `OK` `WARN` `ERROR` (what was shown), `STEP` (a pipeline step), `CMD`/`OUT`/`DONE`/`FAIL` (a command,
+its output, its result - tied together by the command number `#n`), and a final `SUMMARY`. Colour codes and
+progress-bar redraws are stripped from the log. Quick checks:
 
-## ❓ FAQ
+```bash
+grep -E ' (FAIL|ERROR|WARN) ' /var/log/cccu/install.log
+grep ' #6 ' /var/log/cccu/install.log        # everything about command 6
+```
 
-**Is the container a virtual machine?** No. It is an **Incus system container** — a full systemd system that **shares the host kernel**, so the GPU, input and sound work natively. No second kernel, no emulation. 🚀
+## Source layout
 
-**Is there a login screen?** No. Auto-login is the **only** way: the user you pick is logged straight into the desktop at boot. 🔑
+`src/`: `main` command line and run control, `menu` main menu and settings screens, `util` terminal UI, progress
+and logging, `proc` command execution, `hostinstall` drive installation, `drive` partitioning, `installer`
+container pipeline and running-system setup, `distro` family detection and per-distro commands, `incus` Incus
+wrapper, `profiles` container profile, `sources` image/clone/export, `rootfs` system adaptation, `config` options.
 
-**Do I create a user for the container?** No — it is a **clone**, so its users already exist. The installer lists them and you pick one. 👤 The tty host account that logs in automatically can have a **different name**; the session starts the desktop as the container user. 🔁
+## FAQ
 
-**Do I have to give a size?** Yes. There is **no default**: the installer hints one from your image, then asks. 📏
+**Is the container a virtual machine?** No. It is an Incus system container that shares the host kernel.
 
-**What compression can I pick?** `zstd:22` ⭐, `zstd:15`, `zstd:9`, `zstd:3`, `zlib:9`, `lzo` or none — applied as btrfs mount options on the container's pool.
+**Is there a login screen?** No. The configured user is logged in automatically; there is no option to turn it off.
 
-**What does immutable do?** The container's system is read-only; `/etc /var /home /root /opt /srv /usr/local` stay writable on their own volumes. 🔒
+**Do I create a user for the container?** No - the container is a clone, so its users already exist and the
+settings screen lists them. The tty host account can have a different name.
 
-**Which systems can be the host / the container?** 20 systems across the Arch, Debian, Fedora and openSUSE families — see the table above. Systems without systemd (Void, Devuan, Artix, Gentoo, Slackware) and NixOS / KDE Linux are refused with the reason.
+**Do I have to give a size?** Yes. There is no default; the settings screen suggests one from your image.
 
-**Where are the logs?** `/var/log/claudeincus/` — `install.log`, `container.log`, `export.log`. 🪵
+**Where are the logs?** `/var/log/cccu/` - see [Logging](#logging).
 
-## 🗺️ Roadmap
+## Status and roadmap
 
-- 🐳 Docker containers from a cloned system (today: Incus system containers)
-- 🧱 bootstrapping a base for other distros without a ready-made image
-- 🧪 field-testing the Debian, Fedora and openSUSE paths
-- 🌐 non-systemd inits (OpenRC, runit)
+Experimental. The Arch path is the primary target. The Debian, Fedora and openSUSE paths, sized/compressed/
+immutable storage and the running-system mode are implemented but not yet field-tested - please report what
+breaks.
 
-## ⚠️ Status
-
-🧪 **Experimental.** The Arch path is the primary target. The Debian, Fedora and openSUSE paths, the sized/compressed/immutable container storage and the running-system mode are implemented but **not yet field-tested** — please report what breaks.
-
-🐳 **Docker**: creating Docker containers from a cloned system is **planned**, not implemented yet; today the output is an **Incus system container**.
+Planned: Docker containers from a cloned system, bootstrapping a base for other distros without a ready-made
+image, field-testing of the non-Arch paths, non-systemd inits.
 
 ---
 
-<div align="center">
-
-🌊 *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!* 🌊
-
-**[ Support Me ](https://www.paypal.com/paypalme/claudemods?country.x=GB&locale)** · 🌐 [claudemodsreloaded.co.uk](https://www.claudemodsreloaded.co.uk)
-
-</div>
+Support: <https://www.paypal.com/paypalme/claudemods> - <https://www.claudemodsreloaded.co.uk>

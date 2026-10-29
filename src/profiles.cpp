@@ -6,7 +6,7 @@
 
 #include <grp.h>
 
-namespace claudeincus::profiles {
+namespace cccu::profiles {
 namespace {
 
 // Device classes a desktop session needs through the container's device cgroup.
@@ -41,7 +41,7 @@ void gpu_device(std::ostringstream& y) {
 
 std::string session_yaml() {
     std::ostringstream y;
-    y << "description: claudeincus session - nested desktop on the host session (sockets are added at login)\n"
+    y << "description: cccu session - nested desktop on the host session (sockets are added at login)\n"
          "config:\n"
          "  security.privileged: \"true\"\n"
          "  security.nesting: \"true\"\n";
@@ -51,7 +51,7 @@ std::string session_yaml() {
 
 std::string native_yaml() {
     std::ostringstream y;
-    y << "description: claudeincus desktop - SDDM / Plasma Login on a real VT with GPU, input and sound\n"
+    y << "description: cccu desktop - SDDM / Plasma Login on a real VT with GPU, input and sound\n"
          "config:\n"
          "  security.privileged: \"true\"\n"
          "  security.nesting: \"true\"\n"
@@ -75,10 +75,10 @@ std::string native_yaml() {
 
 }  // namespace
 
-const char* name(Display display) { return display == Display::Native ? "claudeincus-desktop" : "claudeincus-session"; }
+const char* name(Display display) { return display == Display::Native ? "cccu-desktop" : "cccu-session"; }
 
 Result install(Display display) {
     return incus::ensure_profile(name(display), display == Display::Native ? native_yaml() : session_yaml());
 }
 
-}  // namespace claudeincus::profiles
+}  // namespace cccu::profiles

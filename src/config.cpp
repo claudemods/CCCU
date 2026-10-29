@@ -1,6 +1,6 @@
 #include "config.hpp"
 
-namespace claudeincus {
+namespace cccu {
 
 std::optional<DisplayManager> parse_dm(std::string_view text) {
     if (text == "auto") return DisplayManager::Auto;
@@ -25,4 +25,4 @@ std::optional<Display> parse_display(std::string_view text) {
 
 std::string_view to_string(Display display) { return display == Display::Native ? "native" : "session"; }
 
-}  // namespace claudeincus
+}  // namespace cccu

@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string>
 
-namespace claudeincus::rootfs {
+namespace cccu::rootfs {
 
 // Display manager unit actually present in the tree ("" if none), honouring the user's choice.
 std::string pick_display_manager(const std::filesystem::path& root, DisplayManager wanted);
@@ -19,4 +19,4 @@ Result adapt(const std::filesystem::path& root, const Options& options);
 // `running` = the tree is the live system (/): its hostname, machine-id and network setup are left alone.
 Result adapt_host(const std::filesystem::path& root, const Options& options, bool running = false);
 
-}  // namespace claudeincus::rootfs
+}  // namespace cccu::rootfs

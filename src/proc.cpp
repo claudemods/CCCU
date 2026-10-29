@@ -3,14 +3,16 @@
 #include "util.hpp"
 
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace claudeincus {
+namespace cccu {
 namespace {
 bool g_dry_run = false;
 
@@ -36,25 +38,33 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
     const bool stream = !options.capture && !options.interactive;  // we relay output to screen + log
 
     // The command itself is not shown on screen (only in the log); what it prints is dark green.
-    log_raw("$ " + command_line + (g_dry_run && options.mutating ? "   (dry run, skipped)\n" : "\n"));
-    if (g_dry_run && options.mutating) {
+    const bool skipped = g_dry_run && options.mutating;
+    const int number = log_command_begin(command_line, skipped);
+    const auto started = std::chrono::steady_clock::now();
+    const auto seconds = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count(); };
+    if (skipped) {
         result.code = 0;
+        log_command_end(number, 0, 0.0);
         return result;
     }
 
     int pipefd[2] = {-1, -1};
-    if ((options.capture || stream) && ::pipe(pipefd) != 0) return result;
+    if ((options.capture || stream) && ::pipe(pipefd) != 0) {
+        log_command_end(number, -1, seconds());
+        return result;
+    }
 
-    // Everything the command prints (also what it prints straight to the terminal) is dark green.
+    // Streamed output is tinted dark green by console_write(); a command that owns the terminal
+    // (interactive) is tinted here instead.
     struct DarkGreen {
         bool on;
-        explicit DarkGreen(bool enable) : on(enable) {
+        explicit DarkGreen(bool enable) : on(enable && color_enabled()) {
             if (on) std::cout << color::dark_green << std::flush;
         }
         ~DarkGreen() {
             if (on) std::cout << color::reset << std::flush;
         }
-    } dark_green(!options.capture);
+    } dark_green(options.interactive);
 
     std::cout.flush();
     const pid_t pid = ::fork();
@@ -63,6 +73,7 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
             ::close(pipefd[0]);
             ::close(pipefd[1]);
         }
+        log_command_end(number, -1, seconds());
         return result;
     }
 
@@ -98,15 +109,26 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
         ::close(pipefd[1]);
         char buffer[4096];
         for (;;) {
+            // Wake up every 200 ms even when the command is silent, so the live status line
+            // (spinner + elapsed time) keeps moving during long steps.
+            pollfd watch {pipefd[0], POLLIN, 0};
+            const int ready = ::poll(&watch, 1, 200);
+            if (ready == 0) {
+                if (stream) status_tick();
+                continue;
+            }
+            if (ready < 0 && errno == EINTR) continue;
+            if (ready < 0) break;
+
             const ssize_t n = ::read(pipefd[0], buffer, sizeof buffer);
             if (n > 0) {
                 const std::string_view chunk(buffer, static_cast<std::size_t>(n));
                 if (options.capture) {
                     result.out.append(chunk);
+                    if (!options.quiet) log_command_output(number, chunk);   // silent probes stay out of the log
                 } else {
-                    std::cout.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
-                    std::cout.flush();
-                    log_raw(chunk);
+                    console_write(chunk);
+                    log_command_output(number, chunk);
                 }
             } else if (n < 0 && errno == EINTR) {
                 continue;
@@ -115,18 +137,22 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
             }
         }
         ::close(pipefd[0]);
+        if (stream) status_finish();
     }
 
     int status = 0;
     while (::waitpid(pid, &status, 0) < 0) {
-        if (errno != EINTR) return result;
+        if (errno != EINTR) {
+            log_command_end(number, -1, seconds());
+            return result;
+        }
     }
     if (WIFEXITED(status)) {
         result.code = WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {
         result.code = 128 + WTERMSIG(status);
     }
-    if (!options.quiet && !options.capture) log_raw("-> exit " + std::to_string(result.code) + "\n");
+    log_command_end(number, result.code, seconds());
     return result;
 }
 
@@ -156,4 +182,4 @@ bool have_command(std::string_view name) {
     return false;
 }
 
-}  // namespace claudeincus
+}  // namespace cccu

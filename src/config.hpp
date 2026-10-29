@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-namespace claudeincus {
+namespace cccu {
 
 enum class DisplayManager { Auto, Sddm, PlasmaLogin, None };
 
@@ -37,7 +37,7 @@ struct Options {
 
     std::string user;                      // account on the tty HOST (required): created if missing, gets Incus access, logged in automatically
     std::string container_user;            // the user INSIDE the cloned system whose desktop runs (default: same as `user`)
-    std::string hostname = "claudeincus";  // host name of the new tty system
+    std::string hostname = "cccu";  // host name of the new tty system
     std::string container_size;            // root disk of the container, e.g. "40GiB" (asked, no default)
     std::string compression;               // btrfs compression for the container storage: "", "zstd:22", "zlib:9", "lzo"...
     bool immutable = false;                // container system mounted read-only (state in separate volumes)
@@ -53,4 +53,4 @@ std::optional<Method> parse_method(std::string_view text);
 std::optional<Display> parse_display(std::string_view text);
 std::string_view to_string(Display display);
 
-}  // namespace claudeincus
+}  // namespace cccu

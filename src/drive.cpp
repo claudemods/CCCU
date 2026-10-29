@@ -8,7 +8,7 @@
 
 #include <sys/stat.h>
 
-namespace claudeincus::drive {
+namespace cccu::drive {
 namespace fs = std::filesystem;
 
 namespace {
@@ -137,4 +137,4 @@ void unmount() {
     run({"umount", "-R", kTarget}, quiet);
 }
 
-}  // namespace claudeincus::drive
+}  // namespace cccu::drive

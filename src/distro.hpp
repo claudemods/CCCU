@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace claudeincus::distro {
+namespace cccu::distro {
 
 // What the installer knows how to drive. The installer needs systemd inside the tty host and inside
 // the container (units, logind, the first-boot service), so only systemd-based systems qualify.
@@ -33,4 +33,4 @@ std::vector<std::string> map_packages(Family family, const std::vector<std::stri
 std::string install_missing_script(Family family, const std::vector<std::string>& packages);  // skips installed ones
 std::string initramfs_and_boot_script(Family family);                                        // initramfs + GRUB
 
-}  // namespace claudeincus::distro
+}  // namespace cccu::distro

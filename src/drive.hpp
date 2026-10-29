@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace claudeincus::drive {
+namespace cccu::drive {
 
 inline constexpr const char* kTarget = "/mnt";
 
@@ -43,4 +43,4 @@ Result mount_efi(const Layout& layout);
 // Unmounts everything below kTarget.
 void unmount();
 
-}  // namespace claudeincus::drive
+}  // namespace cccu::drive

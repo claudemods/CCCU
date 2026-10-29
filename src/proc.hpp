@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-namespace claudeincus {
+namespace cccu {
 
 struct RunOptions {
     bool mutating = true;      // false = read-only query, still runs under --dry-run
@@ -33,4 +33,4 @@ std::string query(const std::vector<std::string>& argv);
 bool have_command(std::string_view name);
 bool is_root();
 
-}  // namespace claudeincus
+}  // namespace cccu
