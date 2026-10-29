@@ -236,10 +236,6 @@ settings screen lists them. The tty host account can have a different name.
 Experimental. The Arch path is the primary target. The Debian, Fedora and openSUSE paths, sized/compressed/
 immutable storage and the running-system mode are implemented but not yet field-tested - please report what
 breaks.
-
-Planned: Docker containers from a cloned system, bootstrapping a base for other distros without a ready-made
-image, field-testing of the non-Arch paths, non-systemd inits.
-
 ---
 
 Support: <https://www.paypal.com/paypalme/claudemods> - <https://www.claudemodsreloaded.co.uk>
