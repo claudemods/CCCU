@@ -26,11 +26,11 @@
 </div>
 
 # 🐧 Claudemods Container Creator Unity
-🌊 *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!*
 
 > **Create Incus system containers from cloned Linux systems** — clone the Linux you already run, put it in a
 > container with its own sized (and optionally compressed and immutable) storage, and boot straight into its
-> KDE desktop on a tiny tty host. 
+> KDE desktop on a tiny tty host. 🌊 *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta,
+> Systemback and father Knoppix!*
 
 ---
 

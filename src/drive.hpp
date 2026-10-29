@@ -19,6 +19,12 @@ inline constexpr Subvolume kBtrfsSubvolumes[] = {
     {"@cache", "/var/cache"}, {"@tmp", "/tmp"},    {"@log", "/var/log"},
 };
 
+// The btrfs mount options for a compression choice, as in the working installer script:
+// ",compress=zstd:22,compress-force=zstd:22" ("" for no compression).
+inline std::string btrfs_compress_options(const std::string& level) {
+    return level.empty() ? std::string() : ",compress=" + level + ",compress-force=" + level;
+}
+
 struct Layout {
     std::string efi_part;   // partition 1: EFI system partition (FAT32)
     std::string root_part;  // partition 2: the tty host system (btrfs or ext4)

@@ -83,12 +83,21 @@ Result prepare(const Options& o, Layout& layout) {
         return fail("The new partitions did not appear.");
     }
 
+    // wipefs on the disk only removes the disk's own signatures. What was INSIDE the old partitions (an ext4
+    // superblock, say) is still there at the same offsets and survives mkfs.btrfs: mount then picks the old ext4
+    // and "btrfs subvolume create" fails with "Inappropriate ioctl for device". Wipe the new partitions first.
+    run({"wipefs", "-a", layout.efi_part});
+    run({"wipefs", "-a", layout.root_part});
+
     if (!run({"mkfs.vfat", "-F32", "-n", "EFI", layout.efi_part}).ok()) return fail("mkfs.vfat failed");
     if (o.fs == "btrfs") {
         if (!run({"mkfs.btrfs", "-f", "-L", "ROOT", layout.root_part}).ok()) return fail("mkfs.btrfs failed");
         // Create the subvolumes on a plain mount, then remount each one where it belongs.
         const std::string target = kTarget;
-        if (!run({"mount", layout.root_part, target}).ok()) return fail("could not mount the system partition");
+        if (!run({"mount", "-t", "btrfs", layout.root_part, target}).ok()) return fail("could not mount the system partition as btrfs");
+        if (!dry_run() && query({"findmnt", "-no", "FSTYPE", target}) != "btrfs") {
+            return fail(layout.root_part + " is not mounted as btrfs (an old filesystem signature is still on it)");
+        }
         for (const auto& sv : kBtrfsSubvolumes) {
             if (!run({"btrfs", "subvolume", "create", target + "/" + sv.name}).ok()) {
                 return fail(std::string("could not create subvolume ") + sv.name);
@@ -101,15 +110,14 @@ Result prepare(const Options& o, Layout& layout) {
                 std::error_code ec;
                 fs::create_directories(mount_point, ec);
             }
-            const std::string options = std::string("subvol=") + sv.name +
-                                        (o.compression.empty() ? "" : ",compress=" + o.compression);
-            if (!run({"mount", "-o", options, layout.root_part, mount_point}).ok()) {
+            const std::string options = std::string("subvol=") + sv.name + btrfs_compress_options(o.compression);
+            if (!run({"mount", "-t", "btrfs", "-o", options, layout.root_part, mount_point}).ok()) {
                 return fail("could not mount subvolume " + std::string(sv.name));
             }
         }
     } else {
         if (!run({"mkfs.ext4", "-F", "-L", "ROOT", layout.root_part}).ok()) return fail("mkfs.ext4 failed");
-        if (!run({"mount", layout.root_part, kTarget}).ok()) return fail("could not mount the system partition");
+        if (!run({"mount", "-t", "ext4", layout.root_part, kTarget}).ok()) return fail("could not mount the system partition as ext4");
     }
     return {};
 }

@@ -123,7 +123,7 @@ Result write_fstab(const Options& o, const drive::Layout& layout) {
     if (o.fs == "btrfs") {
         for (const auto& sv : drive::kBtrfsSubvolumes) {
             fstab += "UUID=" + root_uuid + " " + sv.mount_point + " btrfs subvol=" + sv.name +
-                     (o.compression.empty() ? "" : ",compress=" + o.compression) + " 0 0\n";
+                     drive::btrfs_compress_options(o.compression) + " 0 0\n";
         }
     } else {
         fstab += "UUID=" + root_uuid + " / ext4 defaults 0 1\n";

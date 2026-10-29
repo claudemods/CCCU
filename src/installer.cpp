@@ -1,6 +1,7 @@
 #include "installer.hpp"
 
 #include "distro.hpp"
+#include "drive.hpp"
 #include "incus.hpp"
 #include "proc.hpp"
 #include "profiles.hpp"
@@ -108,7 +109,7 @@ Result prepare_host(Options& o) {
             step("Creating the container storage: btrfs, " + o.container_size +
                  (o.compression.empty() ? std::string() : ", compression " + o.compression));
             std::string mount = "user_subvol_rm_allowed";
-            if (!o.compression.empty()) mount += ",compress=" + o.compression;
+            mount += drive::btrfs_compress_options(o.compression);
             if (!run({"incus", "storage", "create", pool, "btrfs", "size=" + o.container_size, "btrfs.mount_options=" + mount}).ok()) {
                 return fail("could not create the btrfs storage pool (is btrfs-progs installed?)");
             }
