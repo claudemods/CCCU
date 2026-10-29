@@ -108,7 +108,28 @@ output is also available with `journalctl -u cccu-firstboot -f`.
 
 Requires GCC 14+ (or Clang 17+) with C++23 and CMake 3.25+. No other libraries.
 
-**Terminal version** (`cccu`):
+**One command (recommended).** `build.sh` detects your system (Arch, Debian/Ubuntu, Fedora or openSUSE family),
+installs the build and runtime dependencies with its package manager, and builds both programs into `build/`:
+
+```bash
+bash build.sh                 # dependencies + cccu + cccu-gui
+bash build.sh --install       # ... and install them (adds CCCU to the application menu)
+```
+
+| Option | |
+|---|---|
+| `--no-gui` | terminal tool only (no Qt6 needed) |
+| `--deps-only` | only install the dependencies |
+| `--no-deps` | build without touching the package manager |
+| `--clean` | remove `build/` first |
+| `-j <N>` | parallel jobs (default: all cores) |
+
+It checks for a C++23 compiler (GCC 14+ or Clang 17+) and stops with a clear message if the system's is too old.
+The dependencies are the compiler, CMake 3.25+, `rsync`, `tar`, `zstd`, `squashfs-tools`, `parted`, `dosfstools`,
+`e2fsprogs`, `btrfs-progs`, and for the GUI Qt 6 Widgets and polkit. Incus itself is installed later by CCCU
+when it sets up a host.
+
+**By hand - terminal version** (`cccu`):
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -116,7 +137,7 @@ cmake --build build -j
 sudo ./build/cccu
 ```
 
-**Qt6 desktop version** (`cccu-gui`, additionally needs Qt 6 Widgets, e.g. `qt6-base` on Arch,
+**By hand - Qt6 desktop version** (`cccu-gui`, additionally needs Qt 6 Widgets, e.g. `qt6-base` on Arch,
 `qt6-base-dev` on Debian/Ubuntu, `qt6-qtbase-devel` on Fedora). One command builds both programs:
 
 ```bash
@@ -250,6 +271,8 @@ grep ' #6 ' /var/log/cccu/install.log        # everything about command 6
 ```
 
 ## Source layout
+
+`build.sh`: installs the dependencies and builds everything. `packaging/`: application-menu entry and icon.
 
 `gui/`: the Qt6 desktop version (`mainwindow` window, settings pages and live log; `main`).
 
