@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CCCU
+GenericName=Container Creator
+Comment=Claudemods Container Creator Unity - clone your Linux into an Incus container
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/cccu-gui
+Icon=cccu
+Terminal=false
+Categories=System;Settings;
+Keywords=incus;container;installer;clone;kde;
+StartupWMClass=cccu-gui

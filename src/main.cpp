@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -31,8 +32,8 @@ Commands
   install                   WIPE --drive, make p1 = EFI boot and p2 = system, install the tty host
                             (GRUB + Incus), and stage the desktop container for the first boot
   (default) <name>          only create the desktop container on a machine that already runs Incus
-  (menu 2)                  set up the container on THIS running system: installs Incus, SDDM, cage and
-                            the other host packages with the system's own package manager first
+  setup                     (menu 2) set up the container on THIS running system: installs Incus, SDDM, cage
+                            and the other host packages with the system's own package manager first
   --export <file>           write this machine as a tar image (.tar .tar.zst .tar.xz .tar.gz), then stop
 
 install options
@@ -76,7 +77,13 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
     if (!args.empty() && args.front() == "install") {
         install_mode = true;
         args.erase(args.begin());
+    } else if (!args.empty() && args.front() == "setup") {
+        running_mode = true;
+        args.erase(args.begin());
     }
+    // Passwords come through the environment (set by the GUI), never through the command line.
+    if (const char* p = std::getenv("CCCU_USER_PASSWORD")) o.user_password = p;
+    if (const char* p = std::getenv("CCCU_ROOT_PASSWORD")) o.root_password = p;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
@@ -189,7 +196,7 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
     // No arguments = the main menu; "install" = straight to its settings screen. Either way every
     // setting is shown with a red NOT SET / green SET box. --yes = unattended (the first-boot
     // service runs like this): no menu, no questions.
-    const bool menu_flow = !o.assume_yes && (original_args.empty() || install_mode);
+    const bool menu_flow = !o.assume_yes && (original_args.empty() || install_mode || running_mode);
     if (original_args.empty()) {
         const auto mode = menu::choose_mode();
         if (!mode) return 0;
@@ -198,7 +205,7 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
         if (!menu::settings(*mode, o, flags)) return 0;
         if (*mode == menu::Mode::Export) o.assume_yes = true;   // nothing else to confirm
     } else if (menu_flow) {
-        if (!menu::settings(menu::Mode::Install, o, flags)) return 0;
+        if (!menu::settings(install_mode ? menu::Mode::Install : menu::Mode::Running, o, flags)) return 0;
     }
     if (menu_flow) {
         clear_screen();

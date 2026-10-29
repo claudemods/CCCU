@@ -36,7 +36,9 @@ struct Options {
     std::string staging = "/var/tmp";
 
     std::string user;                      // account on the tty HOST (required): created if missing, gets Incus access, logged in automatically
-    std::string container_user;            // the user INSIDE the cloned system whose desktop runs (default: same as `user`)
+    std::string user_password;             // from CCCU_USER_PASSWORD (set by the GUI); empty = ask on the terminal
+    std::string root_password;             // from CCCU_ROOT_PASSWORD
+    std::string container_user;          // the user INSIDE the cloned system whose desktop runs (default: same as `user`)
     std::string hostname = "cccu";  // host name of the new tty system
     std::string container_size;            // root disk of the container, e.g. "40GiB" (asked, no default)
     std::string compression;               // btrfs compression for the container storage: "", "zstd:22", "zlib:9", "lzo"...

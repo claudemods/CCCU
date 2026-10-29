@@ -27,6 +27,8 @@
 
 # CCCU - Claudemods Container Creator Unity
 
+> *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!*
+
 Clone the Linux system you already run into an **Incus system container** with its own sized (and optionally
 compressed and immutable) storage, and boot straight into its KDE Plasma desktop on a minimal tty host.
 
@@ -36,13 +38,14 @@ compressed and immutable) storage, and boot straight into its KDE Plasma desktop
 2. [Quick start](#quick-start)
 3. [The interface](#the-interface)
 4. [Build](#build)
-5. [Usage](#usage)
-6. [Container storage](#container-storage)
-7. [Supported systems](#supported-systems)
-8. [Logging](#logging)
-9. [Source layout](#source-layout)
-10. [FAQ](#faq)
-11. [Status and roadmap](#status-and-roadmap)
+5. [Desktop version (Qt6)](#desktop-version-qt6)
+6. [Usage](#usage)
+7. [Container storage](#container-storage)
+8. [Supported systems](#supported-systems)
+9. [Logging](#logging)
+10. [Source layout](#source-layout)
+11. [FAQ](#faq)
+12. [Status and roadmap](#status-and-roadmap)
 
 ## Overview
 
@@ -68,7 +71,8 @@ sudo cccu --export desktop.tar.zst
 
 # 2. on the machine that will host the container
 #    (or boot an Arch live ISO and choose "Install to a drive" to wipe a drive)
-sudo cccu
+sudo cccu              # terminal version
+                       # or click "CCCU" in the application menu: the Qt6 desktop version (see Build)
 ```
 
 ## The interface
@@ -104,11 +108,40 @@ output is also available with `journalctl -u cccu-firstboot -f`.
 
 Requires GCC 14+ (or Clang 17+) with C++23 and CMake 3.25+. No other libraries.
 
+**Terminal version** (`cccu`):
+
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 sudo ./build/cccu
 ```
+
+**Qt6 desktop version** (`cccu-gui`, additionally needs Qt 6 Widgets, e.g. `qt6-base` on Arch,
+`qt6-base-dev` on Debian/Ubuntu, `qt6-qtbase-devel` on Fedora). One command builds both programs:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCCCU_BUILD_GUI=ON
+cmake --build build -j
+sudo cmake --install build        # adds "CCCU" with an icon to the application menu
+```
+
+Without installing, double-click `build/cccu-gui` in the file manager.
+
+## Desktop version (Qt6)
+
+`cccu-gui` offers the same three modes in a window. Every setting has the same status box as the terminal menu -
+green `SET`, red `NOT SET`, grey `OPTIONAL` - and **Start** unlocks only when nothing required is red. A progress
+bar follows the steps, and the log shows the installer output live (errors red, warnings amber).
+
+* It is a front-end: it runs the `cccu` tool (found next to `cccu-gui`, or in `PATH`) with your settings, so both
+  versions behave identically and write the same logs.
+* It is started by clicking - no terminal. It needs root (it partitions drives and installs packages), so on
+  start it asks for your password with the desktop's own authentication dialog (polkit / `pkexec`) and reopens
+  with the rights it needs. If that is not available the window opens but Start stays disabled and says why.
+* Before a drive install it asks you to type the device path to confirm the wipe.
+* The user and root passwords are passed to the tool through its environment and set with `chpasswd`; they never
+  appear on a command line or in the log.
+* **Dry run** shows what would happen without changing anything. **Cancel** stops the running operation.
 
 ## Usage
 
@@ -118,11 +151,16 @@ sudo ./build/cccu
 | 2. Set up on this system | Installs what the host needs (Incus, `btrfs-progs`, SDDM, `cage`, GPU and audio packages) with the system's own package manager, creates the user and the container. Reboot afterwards: SDDM becomes the display manager |
 | 3. Export this machine | Writes the running system as a `.tar.zst` image to clone elsewhere |
 
-Everything can also be given on the command line; `--yes` runs unattended without the menu.
+Everything can also be given on the command line; `--yes` runs unattended without the menu. `cccu install ...`
+is menu 1, `cccu setup ...` is menu 2.
 
 ```bash
 sudo cccu install --drive /dev/sda --image desktop.tar.zst --user alice --size 60 --compress zstd:22 --yes
+sudo cccu setup --clone-host --user alice --size 60 --yes
 ```
+
+Unattended runs set passwords from the environment (`CCCU_USER_PASSWORD`, `CCCU_ROOT_PASSWORD`); without them
+the tool asks on the terminal.
 
 | Option | Description |
 |---|---|
@@ -213,6 +251,8 @@ grep ' #6 ' /var/log/cccu/install.log        # everything about command 6
 
 ## Source layout
 
+`gui/`: the Qt6 desktop version (`mainwindow` window, settings pages and live log; `main`).
+
 `src/`: `main` command line and run control, `menu` main menu and settings screens, `util` terminal UI, progress
 and logging, `proc` command execution, `hostinstall` drive installation, `drive` partitioning, `installer`
 container pipeline and running-system setup, `distro` family detection and per-distro commands, `incus` Incus
@@ -236,6 +276,16 @@ settings screen lists them. The tty host account can have a different name.
 Experimental. The Arch path is the primary target. The Debian, Fedora and openSUSE paths, sized/compressed/
 immutable storage and the running-system mode are implemented but not yet field-tested - please report what
 breaks.
+
+Planned: Docker containers from a cloned system, bootstrapping a base for other distros without a ready-made
+image, field-testing of the non-Arch paths, non-systemd inits.
+
 ---
 
-Support: <https://www.paypal.com/paypalme/claudemods> - <https://www.claudemodsreloaded.co.uk>
+<div align="center">
+
+*Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!*
+
+**[ Support Me ](https://www.paypal.com/paypalme/claudemods?country.x=GB&locale)** · [claudemodsreloaded.co.uk](https://www.claudemodsreloaded.co.uk)
+
+</div>

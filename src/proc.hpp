@@ -30,6 +30,10 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options = 
 // Read-only helper: runs a query and returns its trimmed stdout ("" on failure).
 std::string query(const std::vector<std::string>& argv);
 
+// Sets a password without a terminal: "user:password" goes to chpasswd through a 0600 temporary file
+// (never through the command line, never into the log). root_dir "/" = this system, otherwise a chroot.
+bool set_password(const std::string& root_dir, const std::string& user, const std::string& password);
+
 bool have_command(std::string_view name);
 bool is_root();
 

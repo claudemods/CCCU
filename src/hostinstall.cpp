@@ -312,9 +312,13 @@ Result install_to_drive(Options o) {
         }
         if (missing) {
             info("New host user: set its password.");
-            RunOptions tty;
-            tty.interactive = true;
-            run({"chroot", drive::kTarget, "passwd", o.user}, tty);
+            if (!o.user_password.empty()) {
+                if (!set_password(drive::kTarget, o.user, o.user_password)) return fail("could not set the password of " + o.user);
+            } else {
+                RunOptions tty;
+                tty.interactive = true;
+                run({"chroot", drive::kTarget, "passwd", o.user}, tty);
+            }
         }
     }
 
@@ -334,9 +338,13 @@ Result install_to_drive(Options o) {
     if (auto r = in_chroot(distro::initramfs_and_boot_script(base.family)); !r) return r;
 
     step("Set the root password for the new host (tty login)");
-    RunOptions terminal;
-    terminal.interactive = true;
-    run({"chroot", drive::kTarget, "passwd", "root"}, terminal);
+    if (!o.root_password.empty()) {
+        if (!set_password(drive::kTarget, "root", o.root_password)) return fail("could not set the root password");
+    } else {
+        RunOptions terminal;
+        terminal.interactive = true;
+        run({"chroot", drive::kTarget, "passwd", "root"}, terminal);
+    }
 
     if (auto r = stage_desktop(o); !r) return r;
 

@@ -165,6 +165,28 @@ std::string query(const std::vector<std::string>& argv) {
     return result.ok() ? trim(result.out) : std::string{};
 }
 
+bool set_password(const std::string& root_dir, const std::string& user, const std::string& password) {
+    if (user.empty() || password.empty() || password.find('\n') != std::string::npos) return false;
+    std::string path = (::access("/run", W_OK) == 0 ? "/run" : "/tmp") + std::string("/cccu-pw-XXXXXX");
+    const int fd = ::mkstemp(path.data());   // created with mode 0600
+    if (fd < 0) return false;
+    const std::string line = user + ":" + password + "\n";
+    const bool written = ::write(fd, line.data(), line.size()) == static_cast<ssize_t>(line.size());
+    ::close(fd);
+
+    bool ok = false;
+    if (written) {
+        RunOptions options;
+        options.stdin_file = path;
+        const std::vector<std::string> argv = (root_dir.empty() || root_dir == "/")
+                                                  ? std::vector<std::string>{"chpasswd"}
+                                                  : std::vector<std::string>{"chroot", root_dir, "chpasswd"};
+        ok = run(argv, options).ok();
+    }
+    ::unlink(path.c_str());
+    return ok;
+}
+
 bool have_command(std::string_view name) {
     const char* path_env = std::getenv("PATH");
     if (!path_env) return false;

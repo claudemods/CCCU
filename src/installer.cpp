@@ -363,9 +363,13 @@ Result setup_running_system(Options o) {
         }
         if (created) {
             info("New user: set its password.");
-            RunOptions tty;
-            tty.interactive = true;
-            run({"passwd", o.user}, tty);
+            if (!o.user_password.empty()) {
+                if (!set_password("/", o.user, o.user_password)) return fail("could not set the password of " + o.user);
+            } else {
+                RunOptions tty;
+                tty.interactive = true;
+                run({"passwd", o.user}, tty);
+            }
         }
     }
 
