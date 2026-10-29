@@ -1,0 +1,21 @@
+#pragma once
+#include "config.hpp"
+#include "util.hpp"
+
+#include <filesystem>
+#include <string>
+
+namespace claudeincus::rootfs {
+
+// Display manager unit actually present in the tree ("" if none), honouring the user's choice.
+std::string pick_display_manager(const std::filesystem::path& root, DisplayManager wanted);
+
+// Turns a freshly copied Arch tree into something systemd can boot as an Incus container and
+// enables the KDE display manager.
+Result adapt(const std::filesystem::path& root, const Options& options);
+
+// Configures a freshly installed host tree to run Incus. Session mode: the host's SDDM offers the
+// "Container Plasma" session. Native mode: tty-only host, VT1 left to the container's display manager.
+Result adapt_host(const std::filesystem::path& root, const Options& options);
+
+}  // namespace claudeincus::rootfs

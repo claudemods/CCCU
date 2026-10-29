@@ -1,0 +1,230 @@
+#include "config.hpp"
+#include "hostinstall.hpp"
+#include "installer.hpp"
+#include "proc.hpp"
+#include "util.hpp"
+
+#include <iostream>
+#include <string>
+#include <vector>
+
+using namespace claudeincus;
+
+namespace {
+
+void usage() {
+    std::cout << R"(claudeincus-installer - tty Arch host + KDE desktop in an Incus system container
+
+Typical flow
+  1. On your Arch machine:      sudo claudeincus-installer --export desktop.tar.zst
+  2. Boot the Arch live ISO:    sudo claudeincus-installer install --drive /dev/sda --image desktop.tar.zst
+
+Commands
+  install                   WIPE --drive, make p1 = EFI boot and p2 = system, install the tty host
+                            (GRUB + Incus), and stage the desktop container for the first boot
+  (default) <name>          only create the desktop container on a machine that already runs Incus
+  --export <file>           write this machine as a tar image (.tar .tar.zst .tar.xz .tar.gz), then stop
+
+install options
+  --drive <dev>             drive to wipe, e.g. /dev/sda or /dev/nvme0n1
+  --fs ext4|btrfs           system partition filesystem (default: ext4)
+  --image <file>            desktop image (squashfs/erofs/tar) made with --export
+  --host-image <file>       tty host system image (default: the live ISO's own root image)
+  --clone-system            instead clone the system you booted (rsync) as the tty host
+  --name <name>             container name (default: desktop)
+
+Container options
+  --image <file>            desktop image;  --clone-host  clone the running machine instead
+  --display session|native  session (default): the HOST runs SDDM and offers a "Container Plasma" session
+                            that shows the container's desktop; native: the container runs its own
+                            display manager on VT1 and the host stays on text consoles
+  --user <name>             the desktop user: created on the host if missing, added to incus-admin
+  --autologin               log --user in automatically (off by default; otherwise you type the password)
+  --dm auto|sddm|plasmalogin|none
+  --pool <name>  --method auto|direct|import  --staging <dir>
+  --exclude <pattern>       extra rsync exclude (repeatable)
+  --keep-kernel  --keep-caches  --no-start
+  --dry-run                 print what would happen, change nothing
+  -y, --yes                 do not ask for confirmation
+  -h, --help
+)";
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    Options o;
+    bool install_mode = false;
+    bool fs_given = false;
+    std::vector<std::string> args(argv + 1, argv + argc);
+    if (!args.empty() && args.front() == "install") {
+        install_mode = true;
+        args.erase(args.begin());
+    }
+
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& a = args[i];
+        auto value = [&](std::string& out) {
+            if (i + 1 >= args.size()) {
+                error("Missing value for " + a);
+                return false;
+            }
+            out = args[++i];
+            return true;
+        };
+        std::string v;
+
+        if (a == "-h" || a == "--help") {
+            usage();
+            return 0;
+        } else if (a == "-y" || a == "--yes") {
+            o.assume_yes = true;
+        } else if (a == "--dry-run") {
+            set_dry_run(true);
+        } else if (a == "--keep-kernel") {
+            o.keep_kernel = true;
+        } else if (a == "--keep-caches") {
+            o.keep_caches = true;
+        } else if (a == "--no-start") {
+            o.start = false;
+        } else if (a == "--clone-host") {
+            o.clone_host = true;
+        } else if (a == "--image") {
+            if (!value(o.image)) return 2;
+        } else if (a == "--clone-system") {
+            o.clone_system = true;
+        } else if (a == "--host-image") {
+            if (!value(o.host_image)) return 2;
+        } else if (a == "--export") {
+            if (!value(o.export_path)) return 2;
+        } else if (a == "--drive") {
+            if (!value(o.drive)) return 2;
+        } else if (a == "--fs") {
+            if (!value(o.fs)) return 2;
+            fs_given = true;
+        } else if (a == "--name") {
+            if (!value(o.name)) return 2;
+        } else if (a == "--display") {
+            if (!value(v)) return 2;
+            const auto parsed = parse_display(v);
+            if (!parsed) {
+                error("Bad --display: " + v + " (session or native)");
+                return 2;
+            }
+            o.display = *parsed;
+        } else if (a == "--dm") {
+            if (!value(v)) return 2;
+            const auto parsed = parse_dm(v);
+            if (!parsed) {
+                error("Bad --dm: " + v);
+                return 2;
+            }
+            o.dm = *parsed;
+        } else if (a == "--method") {
+            if (!value(v)) return 2;
+            const auto parsed = parse_method(v);
+            if (!parsed) {
+                error("Bad --method: " + v);
+                return 2;
+            }
+            o.method = *parsed;
+        } else if (a == "--pool") {
+            if (!value(o.pool)) return 2;
+        } else if (a == "--staging") {
+            if (!value(o.staging)) return 2;
+        } else if (a == "--autologin") {
+            o.autologin = true;
+        } else if (a == "--user") {
+            if (!value(o.user)) return 2;
+        } else if (a == "--exclude") {
+            if (!value(v)) return 2;
+            o.extra_excludes.push_back(v);
+        } else if (a.size() > 1 && a.front() == '-') {
+            error("Unknown option: " + a);
+            return 2;
+        } else if (o.name.empty()) {
+            o.name = a;
+        } else {
+            error("Unexpected argument: " + a);
+            return 2;
+        }
+    }
+
+    if (!is_root()) {
+        error("Run with root privileges: sudo claudeincus-installer");
+        return 1;
+    }
+
+    // Started with no arguments: ask what to do instead of silently picking container-only mode.
+    if (args.empty() && !install_mode) {
+        info("\n1. Install to a drive (wipe it: EFI boot + tty host + desktop container)");
+        info("2. Create the desktop container on this machine (Incus already running)");
+        info("3. Export this machine as a desktop image");
+        const std::string choice = ask("Choose (1-3)", "1");
+        if (choice == "1") {
+            install_mode = true;
+        } else if (choice == "3") {
+            o.export_path = ask("Output file", "desktop.tar.zst");
+        } else if (choice != "2") {
+            error("Invalid choice.");
+            return 2;
+        }
+    }
+
+    // Everything below is logged: the install on the live system, the container creation on the
+    // host (this is what runs from the first-boot service after the reboot).
+    if (!dry_run()) {
+        const char* log_file = !o.export_path.empty() ? "/var/log/claudeincus/export.log"
+                               : install_mode         ? "/var/log/claudeincus/install.log"
+                                                      : "/var/log/claudeincus/container.log";
+        log_open(log_file);
+        if (!log_path().empty()) info(std::string("Log file: ") + log_file);
+    }
+
+    auto finish = [](const Result& result) {
+        if (result) return 0;
+        error(result.error());
+        return 1;
+    };
+
+    if (o.autologin && o.user.empty()) {
+        error("--autologin needs --user <name>");
+        return 2;
+    }
+    if (!o.export_path.empty()) {
+        const int code = finish(export_image(o));
+        if (code == 0) ok("Image written: " + o.export_path);
+        return code;
+    }
+
+    if (install_mode) {
+        if (o.drive.empty()) {
+            RunOptions listing;
+            listing.mutating = false;
+            run({"lsblk", "-d", "-o", "NAME,SIZE,MODEL,TRAN"}, listing);
+            o.drive = ask("Drive to WIPE and install onto (e.g. /dev/sda)");
+        }
+        if (o.image.empty()) o.image = ask("Path to the desktop image made with --export");
+        if (o.host_image.empty() && !o.clone_system && !o.assume_yes) {
+            const std::string source = ask("tty host system: 'running' = clone the system you booted, or a path to an image "
+                                           "(empty = the live ISO's image, or the running system if there is none)");
+            if (source == "running") o.clone_system = true;
+            else o.host_image = source;
+        }
+        if (o.user.empty() && !o.assume_yes) {
+            o.user = ask("Desktop user (created on the host if missing; gets Incus access; empty = none)");
+        }
+        if (!fs_given && !o.assume_yes) o.fs = ask("System filesystem (ext4 or btrfs)", o.fs);
+        return finish(install_to_drive(o));
+    }
+
+    if (o.name.empty()) o.name = ask("Container name", "desktop");
+    if (o.image.empty() && !o.clone_host) {
+        o.image = ask("Path to your cloned Arch image (squashfs or tar), or 'host' to clone this machine");
+        if (o.image == "host") {
+            o.image.clear();
+            o.clone_host = true;
+        }
+    }
+    return finish(create_container(o));
+}
