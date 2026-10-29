@@ -66,6 +66,9 @@ drive / running system
 ## Quick start
 
 ```bash
+# 0. build and install (dependencies are installed for you)
+bash build.sh --install
+
 # 1. on the machine you want to clone
 sudo cccu --export desktop.tar.zst
 
@@ -76,6 +79,9 @@ sudo cccu              # terminal version
 ```
 
 ## The interface
+
+This is the terminal version; the [desktop version](#desktop-version-qt6) offers the same modes and status boxes
+in a window.
 
 Running `cccu` without arguments opens the main menu. Each mode then shows a **settings screen**: every setting
 is a row with a status box - **green `SET`** when it has a value, **red `NOT SET`** when a required value is
@@ -106,7 +112,8 @@ output is also available with `journalctl -u cccu-firstboot -f`.
 
 ## Build
 
-Requires GCC 14+ (or Clang 17+) with C++23 and CMake 3.25+. No other libraries.
+Requires GCC 14+ (or Clang 17+) with C++23 and CMake 3.25+. The terminal tool needs no other libraries; the Qt6
+desktop version additionally needs Qt 6 Widgets.
 
 **One command (recommended).** `build.sh` detects your system (Arch, Debian/Ubuntu, Fedora or openSUSE family),
 installs the build and runtime dependencies with its package manager, and builds both programs into `build/`:
