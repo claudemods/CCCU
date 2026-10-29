@@ -4,7 +4,9 @@
 
 #include <cerrno>
 #include <chrono>
+#include <algorithm>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #include <fcntl.h>
@@ -108,11 +110,27 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
     if (options.capture || stream) {
         ::close(pipefd[1]);
         char buffer[4096];
+        auto last_probe = std::chrono::steady_clock::now();
+        // Bytes the command has read so far, as a percentage of options.progress_total.
+        const auto probe_progress = [&] {
+            if (options.progress_total == 0) return;
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_probe < std::chrono::milliseconds(400)) return;
+            last_probe = now;
+            std::ifstream io("/proc/" + std::to_string(pid) + "/io");
+            for (std::string line; std::getline(io, line);) {
+                if (line.rfind("rchar:", 0) != 0) continue;
+                const unsigned long long read = std::strtoull(line.c_str() + 6, nullptr, 10);
+                status_progress(static_cast<int>(std::min<unsigned long long>(99, read * 100 / options.progress_total)));
+                break;
+            }
+        };
         for (;;) {
             // Wake up every 200 ms even when the command is silent, so the live status line
             // (spinner + elapsed time) keeps moving during long steps.
             pollfd watch {pipefd[0], POLLIN, 0};
             const int ready = ::poll(&watch, 1, 200);
+            probe_progress();
             if (ready == 0) {
                 if (stream) status_tick();
                 continue;

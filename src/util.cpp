@@ -33,6 +33,8 @@ Clock::time_point g_step_start = Clock::now();
 bool g_at_line_start = true;      // the cursor is at the start of an empty line (safe to draw the status line)
 bool g_status_visible = false;
 unsigned g_spin = 0;
+int g_percent = -1;               // progress of the running command, -1 = unknown
+int g_percent_printed = -1;
 
 // Log state: counters for the SUMMARY record, and the output line that is still being assembled.
 int g_commands = 0;
@@ -277,6 +279,8 @@ void step(std::string_view message) {
     if (g_step >= g_total_steps) g_total_steps = g_step + 1;   // the estimate was short: stay below 100%
     g_step_title = std::string(message);
     g_step_start = Clock::now();
+    g_percent = -1;
+    g_percent_printed = -1;
 
     const std::string counter = "[" + std::to_string(g_step) + "/" + std::to_string(g_total_steps) + "]";
     const std::size_t columns = std::min<std::size_t>(terminal_columns(), 100);
@@ -299,7 +303,7 @@ void status_tick() {
     if (!color_enabled() || g_step == 0 || !g_at_line_start) return;
     static const char frames[] = {'|', '/', '-', '\\'};
     const std::size_t columns = terminal_columns();
-    const std::string tail = "  step " + clock_text(Clock::now() - g_step_start) + "  total " + clock_text(Clock::now() - g_run_start);
+    const std::string tail = (g_percent >= 0 ? "  " + std::to_string(g_percent) + "%" : std::string()) + "  step " + clock_text(Clock::now() - g_step_start) + "  total " + clock_text(Clock::now() - g_run_start);
     const std::size_t room = columns > tail.size() + 8 ? columns - tail.size() - 8 : 10;
     std::cout << "\r\033[2K" << paint(color::cyan, std::string("[ ") + frames[g_spin++ % 4] + " ]") << ' '
               << fit(g_step_title, std::min(room, visible_width(g_step_title))) << paint(color::grey, tail) << std::flush;
@@ -319,6 +323,21 @@ void console_write(std::string_view chunk) {
 
 void status_finish() {
     erase_status();
+}
+
+void status_progress(int percent) {
+    percent = std::min(percent, 100);
+    g_percent = percent;
+    if (percent < 0 || percent == g_percent_printed) return;
+    g_percent_printed = percent;
+    if (percent % 10 == 0) log_event("PROG", std::to_string(percent) + "%");
+    if (color_enabled()) {
+        status_tick();
+    } else {
+        erase_status();
+        std::cout << "    ... " << percent << "%" << std::endl;
+        g_at_line_start = true;
+    }
 }
 
 void print_banner() {

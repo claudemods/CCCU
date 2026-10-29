@@ -102,5 +102,6 @@ private:
     QProcess* process_ = nullptr;
     QByteArray pending_;     // output not yet ended by a newline
     bool running_ = false;
+    int currentStep_ = 1;
     Mode runningMode_ = Install;
 };

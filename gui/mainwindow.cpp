@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDesktopServices>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -31,9 +32,26 @@
 
 #include <algorithm>
 
+#include <pwd.h>
 #include <unistd.h>
 
 namespace {
+
+// The home folder of the person who clicked: the GUI itself runs as root (pkexec), whose home is /root.
+QString userHome() {
+    const QByteArray uid = qgetenv("PKEXEC_UID");
+    if (!uid.isEmpty()) {
+        if (const passwd* pw = ::getpwuid(static_cast<uid_t>(uid.toUInt()))) return QString::fromLocal8Bit(pw->pw_dir);
+    }
+    return QDir::homePath();
+}
+
+// Paths typed by hand may be relative: make them absolute from the user's home, never from root's folder.
+QString absolutize(const QString& text) {
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty() || QDir::isAbsolutePath(trimmed)) return trimmed;
+    return QDir(userHome()).absoluteFilePath(trimmed);
+}
 
 const char* kStyle = R"(
 * { font-size: 13px; }
@@ -218,7 +236,7 @@ QWidget* MainWindow::buildPage(Mode mode) {
     v->addStretch();
 
     const QString imageFilter = "System images (*.tar *.tar.zst *.tar.xz *.tar.gz *.squashfs *.sfs *.erofs);;All files (*)";
-    const auto isFile = [](QLineEdit* edit) { return [edit] { return QFileInfo(edit->text().trimmed()).isFile(); }; };
+    const auto isFile = [](QLineEdit* edit) { return [edit] { return QFileInfo(absolutize(edit->text())).isFile(); }; };
 
     if (mode == Install) {
         drive_ = new QComboBox;
@@ -268,7 +286,7 @@ QWidget* MainWindow::buildPage(Mode mode) {
                [this, f = isFile(runImage_)] { return runSource_->currentIndex() == 1 || f(); });
         buildCommon(Running);
     } else {
-        exportPath_ = new QLineEdit("desktop.tar.zst");
+        exportPath_ = new QLineEdit(userHome() + "/desktop.tar.zst");
         addRow(Export, "Output file", fileRow(exportPath_, true, "Images (*.tar *.tar.zst *.tar.xz *.tar.gz)"), {exportPath_}, true,
                [this] { return !exportPath_->text().trimmed().isEmpty(); });
     }
@@ -356,8 +374,9 @@ QWidget* MainWindow::fileRow(QLineEdit* edit, bool save, const QString& filter) 
     layout->addWidget(edit, 1);
     layout->addWidget(browse);
     connect(browse, &QPushButton::clicked, this, [this, edit, save, filter] {
-        const QString path = save ? QFileDialog::getSaveFileName(this, "Choose the output file", edit->text(), filter)
-                                  : QFileDialog::getOpenFileName(this, "Choose a file", edit->text(), filter);
+        const QString start = edit->text().trimmed().isEmpty() ? userHome() : absolutize(edit->text());
+        const QString path = save ? QFileDialog::getSaveFileName(this, "Where should the image be saved?", start, filter)
+                                  : QFileDialog::getOpenFileName(this, "Choose a file", start, filter);
         if (!path.isEmpty()) edit->setText(path);
     });
     return row;
@@ -417,20 +436,20 @@ QString MainWindow::backendPath() const {
 QStringList MainWindow::buildArgs(Mode mode) const {
     QStringList args;
     if (mode == Export) {
-        args << "--export" << exportPath_->text().trimmed();
+        args << "--export" << absolutize(exportPath_->text());
     } else {
         const Common& c = common_[mode];
         const QString user = c.user->text().trimmed();
         const QString containerUser = c.containerUser->text().trimmed().isEmpty() ? user : c.containerUser->text().trimmed();
         if (mode == Install) {
-            args << "install" << "--drive" << drive_->currentData().toString() << "--image" << installImage_->text().trimmed()
+            args << "install" << "--drive" << drive_->currentData().toString() << "--image" << absolutize(installImage_->text())
                  << "--hostname" << hostname_->text().trimmed() << "--fs" << fs_->currentText();
             if (hostSource_->currentIndex() == 1) args << "--clone-system";
-            if (hostSource_->currentIndex() == 2) args << "--host-image" << hostImage_->text().trimmed();
+            if (hostSource_->currentIndex() == 2) args << "--host-image" << absolutize(hostImage_->text());
         } else {
             args << "setup";
             if (runSource_->currentIndex() == 1) args << "--clone-host";
-            else args << "--image" << runImage_->text().trimmed();
+            else args << "--image" << absolutize(runImage_->text());
         }
         args << "--user" << user << "--container-user" << containerUser << "--name" << c.name->text().trimmed() << "--size"
              << QString("%1GiB").arg(static_cast<long long>(c.size->value())) << "--compress" << c.compress->currentText();
@@ -452,6 +471,12 @@ void MainWindow::start() {
                                                     QString("ALL DATA on %1 will be destroyed.\n\nType the device path to confirm:").arg(drive),
                                                     QLineEdit::Normal, QString(), &accepted);
         if (!accepted || typed.trimmed() != drive) return;
+    } else if (mode == Export) {
+        // Ask where the image goes, every time: the chosen file is what gets written.
+        const QString chosen = QFileDialog::getSaveFileName(this, "Where should the image be saved?", absolutize(exportPath_->text()),
+                                                            "Images (*.tar.zst *.tar.xz *.tar.gz *.tar);;All files (*)");
+        if (chosen.isEmpty()) return;
+        exportPath_->setText(chosen);
     } else if (QMessageBox::question(this, "Start", "Start now? This changes the system.") != QMessageBox::Yes) {
         return;
     }
@@ -512,12 +537,20 @@ void MainWindow::handleLine(const QString& rawLine) {
     line.remove('\r');
     if (line.contains(QChar(0x2588)) || line.contains(QChar(0x2591))) return;   // the text progress bar: the GUI has its own
 
+    // "    ... 42%": progress inside the current step (the bar is 100 units per step).
+    static const QRegularExpression progressRe(R"(^\s+\.\.\. (\d+)%$)");
+    if (const auto p = progressRe.match(line); p.hasMatch()) {
+        bar_->setValue(std::min(bar_->maximum(), (currentStep_ - 1) * 100 + p.captured(1).toInt()));
+        return;
+    }
+
     static const QRegularExpression stepRe(R"(^\x{2500}{2} \[(\d+)/(\d+)\] (.*?) \x{2500}*$)");
     if (const auto m = stepRe.match(line); m.hasMatch()) {
         const int n = m.captured(1).toInt();
         const int total = m.captured(2).toInt();
-        bar_->setRange(0, total);
-        bar_->setValue(n - 1);
+        currentStep_ = n;
+        bar_->setRange(0, total * 100);
+        bar_->setValue((n - 1) * 100);
         stepLabel_->setText(QString("Step %1 of %2  -  %3").arg(n).arg(total).arg(m.captured(3)));
         appendLog(line, "#4cd964", true);
     } else if (line.startsWith("[ FAIL ]")) {
@@ -534,18 +567,33 @@ void MainWindow::handleLine(const QString& rawLine) {
 }
 
 void MainWindow::finished(int code, QProcess::ExitStatus status) {
+    readOutput();   // whatever the process printed last
     if (!pending_.isEmpty()) handleLine(QString::fromUtf8(pending_));
     pending_.clear();
     setRunning(false);
     process_->deleteLater();
     process_ = nullptr;
 
-    const bool success = status == QProcess::NormalExit && code == 0;
+    bool success = status == QProcess::NormalExit && code == 0;
+    // Never trust "exit 0" alone: an export must have produced the file.
+    QString savedTo;
+    if (success && runningMode_ == Export && !dryRun_->isChecked()) {
+        savedTo = absolutize(exportPath_->text());
+        if (!QFileInfo(savedTo).isFile() || QFileInfo(savedTo).size() == 0) {
+            success = false;
+            appendLog("The tool reported success but the image does not exist: " + savedTo, "#ff6b6b", true);
+        }
+    }
     if (success) bar_->setValue(bar_->maximum());
     stepLabel_->setText(success ? "Finished." : "Stopped.");
     result_->setText(success ? "Completed successfully." : QString("Failed (exit code %1). See the log above and /var/log/cccu/.").arg(code));
     result_->setStyleSheet(success ? "color:#4cd964; font-weight:600;" : "color:#ff6b6b; font-weight:600;");
 
+    if (success && !savedTo.isEmpty()) {
+        const qint64 size = QFileInfo(savedTo).size();
+        result_->setText(QString("Image saved: %1  (%2 MiB)").arg(savedTo).arg(size / (1024 * 1024)));
+        QMessageBox::information(this, "Export complete", "The image was saved to:\n\n" + savedTo);
+    }
     if (success && runningMode_ == Install) {
         QMessageBox::information(this, "Installation complete",
                                  "Reboot into the new system. On that first boot CCCU creates the desktop container and shows live progress on the screen.");

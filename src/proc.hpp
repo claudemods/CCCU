@@ -12,6 +12,9 @@ struct RunOptions {
     bool quiet = false;        // do not echo the command line on screen (it is still logged)
     bool interactive = false;  // inherit the terminal untouched (passwords, progress bars); output not logged
     std::filesystem::path stdin_file;
+    // > 0: the command reads about this many bytes in total (e.g. tar over a whole system). Its read
+    // counter in /proc/<pid>/io is turned into a percentage (status_progress), so silent commands show progress.
+    unsigned long long progress_total = 0;
 };
 
 struct RunResult {

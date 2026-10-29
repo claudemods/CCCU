@@ -100,6 +100,9 @@ still missing. Type a row number to change it, `S` to start (only possible when 
 +------------------------------------------------------------------------------+
 ```
 
+Long silent commands (such as writing an export image) report a real percentage, measured from the bytes the
+command has read.
+
 While an installation runs, every step prints a header with a counter (`[3/12]`), an overall progress bar and
 the elapsed time. A live status line (spinner, step time, total time) stays at the bottom and keeps moving even
 while a long command is silent. Messages carry level tags - `[ INFO ]`, `[  OK  ]`, `[ WARN ]`, `[ FAIL ]` -
@@ -115,13 +118,32 @@ output is also available with `journalctl -u cccu-firstboot -f`.
 Requires GCC 14+ (or Clang 17+) with C++23 and CMake 3.25+. The terminal tool needs no other libraries; the Qt6
 desktop version additionally needs Qt 6 Widgets.
 
-**One command (recommended).** `build.sh` detects your system (Arch, Debian/Ubuntu, Fedora or openSUSE family),
-installs the build and runtime dependencies with its package manager, and builds both programs into `build/`:
+### Build the GUI (Qt6 desktop version)
 
 ```bash
-bash build.sh                 # dependencies + cccu + cccu-gui
-bash build.sh --install       # ... and install them (adds CCCU to the application menu)
+bash build.sh --install
 ```
+
+That is the whole process. It installs the dependencies (including Qt 6), builds **`cccu-gui`** together with the
+terminal tool `cccu`, and adds **CCCU** to your application menu. Then:
+
+* click **CCCU** in the application menu, **or**
+* double-click `build/cccu-gui` in the file manager (if you did not use `--install`).
+
+It asks for your password in the normal desktop dialog - no terminal or `sudo` needed to start it.
+Without `--install` the build is the same, just not added to the menu: `bash build.sh`.
+
+### Build the terminal tool only
+
+```bash
+bash build.sh --no-gui        # no Qt needed
+sudo ./build/cccu
+```
+
+### What build.sh does
+
+`build.sh` detects your system (Arch, Debian/Ubuntu, Fedora or openSUSE family), installs the build and runtime
+dependencies with its package manager, and builds into `build/`.
 
 | Option | |
 |---|---|
@@ -167,6 +189,10 @@ bar follows the steps, and the log shows the installer output live (errors red, 
   start it asks for your password with the desktop's own authentication dialog (polkit / `pkexec`) and reopens
   with the rights it needs. If that is not available the window opens but Start stays disabled and says why.
 * Before a drive install it asks you to type the device path to confirm the wipe.
+* **Export** always asks where to save the image (a "Save as" dialog, starting in your home folder). The tool
+  shows the full path, checks the free space, writes the image with a live percentage, then verifies that the
+  file exists, hands it to your user, and the window reports the final path and size. A missing file is
+  reported as a failure, never as success.
 * The user and root passwords are passed to the tool through its environment and set with `chpasswd`; they never
   appear on a command line or in the log.
 * **Dry run** shows what would happen without changing anything. **Cancel** stops the running operation.

@@ -60,6 +60,9 @@ void step(std::string_view message);
 void status_tick();                                  // redraw spinner + elapsed time
 void console_write(std::string_view chunk);          // command output: erases the live line, writes, redraws it
 void status_finish();                                // erase the live line for good
+// Percent of the running command (0-100, -1 = unknown): shown in the live line on a terminal; without a
+// terminal (the GUI reads this) a line "    ... 42%" is printed whenever it changes.
+void status_progress(int percent);
 
 // ---- log file ---------------------------------------------------------------------------------
 //

@@ -232,9 +232,7 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
 
     if (!o.export_path.empty()) {
         set_total_steps(3);
-        const int code = finish(export_image(o));
-        if (code == 0) ok("Image written: " + o.export_path);
-        return code;
+        return finish(export_image(o));
     }
     if (o.container_user.empty()) o.container_user = o.user;   // --user alone: same name in the container
     if ((install_mode || running_mode) && o.assume_yes && o.user.empty()) {
