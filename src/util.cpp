@@ -14,7 +14,10 @@
 #include <unistd.h>
 
 #ifndef CCCU_VERSION
-#define CCCU_VERSION "3.0.0"
+#define CCCU_VERSION "1.0"
+#endif
+#ifndef CCCU_DATE
+#define CCCU_DATE "29-10-2026"
 #endif
 
 namespace cccu {
@@ -35,6 +38,7 @@ bool g_status_visible = false;
 unsigned g_spin = 0;
 int g_percent = -1;               // progress of the running command, -1 = unknown
 int g_percent_printed = -1;
+std::string g_detail;             // text next to the percentage (bytes, speed, ETA)
 
 // Log state: counters for the SUMMARY record, and the output line that is still being assembled.
 int g_commands = 0;
@@ -197,7 +201,7 @@ void log_open(const std::filesystem::path& file, std::string_view command_line) 
     const char* user = std::getenv("SUDO_USER");
     const std::string rule(78, '=');
     log_write("\n" + rule + "\n");
-    log_write(" CCCU " CCCU_VERSION "  -  Claudemods Container Creator Unity\n");
+    log_write(" CCCU v" CCCU_VERSION " " CCCU_DATE "  -  Claudemods Container Creator Unity\n");
     log_write(" started : " + timestamp() + "\n");
     log_write(" host    : " + std::string(host) + "\n");
     log_write(" user    : " + std::string(user ? user : "root") + "\n");
@@ -276,11 +280,12 @@ void set_total_steps(int total) {
 void step(std::string_view message) {
     erase_status();
     ++g_step;
-    if (g_step >= g_total_steps) g_total_steps = g_step + 1;   // the estimate was short: stay below 100%
+    if (g_step > g_total_steps) g_total_steps = g_step;   // the estimate was short: the bar never shows 100% before the end
     g_step_title = std::string(message);
     g_step_start = Clock::now();
     g_percent = -1;
     g_percent_printed = -1;
+    g_detail.clear();
 
     const std::string counter = "[" + std::to_string(g_step) + "/" + std::to_string(g_total_steps) + "]";
     const std::size_t columns = std::min<std::size_t>(terminal_columns(), 100);
@@ -303,7 +308,7 @@ void status_tick() {
     if (!color_enabled() || g_step == 0 || !g_at_line_start) return;
     static const char frames[] = {'|', '/', '-', '\\'};
     const std::size_t columns = terminal_columns();
-    const std::string tail = (g_percent >= 0 ? "  " + std::to_string(g_percent) + "%" : std::string()) + "  step " + clock_text(Clock::now() - g_step_start) + "  total " + clock_text(Clock::now() - g_run_start);
+    const std::string tail = (g_percent >= 0 ? "  " + std::to_string(g_percent) + "%" + (g_detail.empty() ? std::string() : "  " + g_detail) : std::string()) + "  step " + clock_text(Clock::now() - g_step_start) + "  total " + clock_text(Clock::now() - g_run_start);
     const std::size_t room = columns > tail.size() + 8 ? columns - tail.size() - 8 : 10;
     std::cout << "\r\033[2K" << paint(color::cyan, std::string("[ ") + frames[g_spin++ % 4] + " ]") << ' '
               << fit(g_step_title, std::min(room, visible_width(g_step_title))) << paint(color::grey, tail) << std::flush;
@@ -325,17 +330,19 @@ void status_finish() {
     erase_status();
 }
 
-void status_progress(int percent) {
+void status_progress(int percent, std::string_view detail) {
     percent = std::min(percent, 100);
     g_percent = percent;
-    if (percent < 0 || percent == g_percent_printed) return;
+    g_detail = std::string(detail);
+    if (percent < 0) return;
+    const bool changed = percent != g_percent_printed;
     g_percent_printed = percent;
-    if (percent % 10 == 0) log_event("PROG", std::to_string(percent) + "%");
+    if (changed && percent % 10 == 0) log_event("PROG", std::to_string(percent) + "%" + (detail.empty() ? "" : "  " + std::string(detail)));
     if (color_enabled()) {
-        status_tick();
-    } else {
+        status_tick();   // redraws the live line with the percentage and the detail
+    } else if (changed) {
         erase_status();
-        std::cout << "    ... " << percent << "%" << std::endl;
+        std::cout << "    ... " << percent << "%" << (detail.empty() ? "" : "  " + std::string(detail)) << std::endl;
         g_at_line_start = true;
     }
 }
@@ -350,7 +357,7 @@ void print_banner() {
 ░╚════╝░╚══════╝╚═╝░░╚═╝░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░)BANNER";
     if (color_enabled()) std::cout << color::reset;
     std::cout << '\n'
-              << paint(color::white, std::string("CCCU  -  Claudemods Container Creator Unity  v") + CCCU_VERSION) << '\n'
+              << paint(color::white, std::string("CCCU  -  Claudemods Container Creator Unity  v") + CCCU_VERSION + " " + CCCU_DATE) << '\n'
               << paint(color::grey, "Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!")
               << '\n'
               << std::endl;

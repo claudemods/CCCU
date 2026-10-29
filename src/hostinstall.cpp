@@ -155,11 +155,13 @@ Result stage_desktop(const Options& o) {
     const std::string staged = "/" + std::string(kStageDir) + "/" + file;
 
     step("Copying the desktop image onto the new system");
-    if (!run({"cp", "--sparse=always", o.image, (stage / file).string()}).ok()) return fail("could not copy " + o.image);
+    if (auto r = copy_file_progress(o.image, (stage / file).string()); !r) return r;
 
+    step("Copying the installer onto the new system");
     const fs::path self = fs::read_symlink("/proc/self/exe", ec);
-    if (ec || !run({"install", "-Dm755", self.string(), (target / "usr/local/bin/cccu").string()}).ok()) {
-        return fail("could not copy the installer onto the new system");
+    if (ec) return fail("could not find the installer program: " + ec.message());
+    if (auto r = copy_file_progress(self.string(), (target / "usr/local/bin/cccu").string(), "755"); !r) {
+        return fail("could not copy the installer onto the new system: " + r.error());
     }
 
     std::string command = "/usr/local/bin/cccu " + o.name + " --image " + staged + " --yes";
@@ -198,8 +200,7 @@ Result stage_desktop(const Options& o) {
         "ExecStart=" + command + "\n" + mask_getty +
         "ExecStartPost=/usr/bin/rm -f " + staged + "\n"
         "ExecStartPost=/usr/bin/systemctl disable cccu-firstboot.service\n"
-        "ExecStopPost=-/usr/bin/kill -s RTMIN+20 1\n"
-        "ExecStopPost=-/usr/bin/systemctl start --no-block getty@tty1.service\n\n"
+        "ExecStopPost=-/usr/bin/kill -s RTMIN+20 1\n\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n";
     if (auto r = write_text(target / "etc/systemd/system/cccu-firstboot.service", unit); !r) return r;
@@ -282,7 +283,9 @@ Result install_to_drive(Options o) {
     info("Host base:            " + base.name + " - " + distro::family_name(base.family));
 
     step("Installing Incus and what the host needs in the new system");
-    run({"cp", "--remove-destination", "/etc/resolv.conf", std::string(drive::kTarget) + "/etc/resolv.conf"});
+    // resolv.conf may be a symlink in the new system: replace it by a real file so the chroot has DNS.
+    std::filesystem::remove(std::string(drive::kTarget) + "/etc/resolv.conf", ec);
+    if (auto r = copy_file_progress("/etc/resolv.conf", std::string(drive::kTarget) + "/etc/resolv.conf"); !r) warn(r.error());
     // The host only needs: Incus (+ btrfs-progs for the container's own btrfs storage), the bootloader,
     // whatever unpacks the desktop image, and what the Container Plasma session needs (SDDM, cage, GPU
     // drivers, audio). Generic names; distro.cpp maps them to the base's package names.

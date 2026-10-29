@@ -4,6 +4,8 @@
 #include <string_view>
 #include <vector>
 
+#include "util.hpp"
+
 namespace cccu {
 
 struct RunOptions {
@@ -32,6 +34,13 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options = 
 
 // Read-only helper: runs a query and returns its trimmed stdout ("" on failure).
 std::string query(const std::vector<std::string>& argv);
+
+// Copies that show what they do: what is copied and where, the size (and for folders the number of
+// files and folders), a live percentage with bytes / speed / ETA, and a summary with time and speed.
+// copy_file_progress keeps holes (sparse files stay sparse). copy_tree_progress copies the content of
+// a folder into another one like `cp -a` (owners, modes, xattrs, symlinks).
+Result copy_file_progress(const std::string& from, const std::string& to, std::string_view mode = {});   // mode "755" = chmod
+Result copy_tree_progress(const std::string& from_dir, const std::string& to_dir, std::string_view what);
 
 // Sets a password without a terminal: "user:password" goes to chpasswd through a 0600 temporary file
 // (never through the command line, never into the log). root_dir "/" = this system, otherwise a chroot.

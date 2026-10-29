@@ -53,6 +53,34 @@ QString absolutize(const QString& text) {
     return QDir(userHome()).absoluteFilePath(trimmed);
 }
 
+// Opens the log folder in the file manager. The GUI runs as root, which has no desktop session of its own,
+// so the folder is opened as the person who clicked (runuser + their session bus).
+void openLogFolder(QWidget* parent) {
+    const QString dir = "/var/log/cccu";
+    if (!QFileInfo(dir).isDir()) {
+        QMessageBox::information(parent, "Log folder", "There is no log yet.\n\nLogs are written to " + dir +
+                                 " when an operation runs (install.log, container.log, export.log).");
+        return;
+    }
+    bool started = false;
+    const QByteArray uid = qgetenv("PKEXEC_UID");
+    if (::geteuid() == 0 && !uid.isEmpty()) {
+        if (const passwd* pw = ::getpwuid(static_cast<uid_t>(uid.toUInt()))) {
+            const QString runtime = "/run/user/" + QString::fromLatin1(uid);
+            QStringList args = {"-u", QString::fromLocal8Bit(pw->pw_name), "--", "env", "XDG_RUNTIME_DIR=" + runtime,
+                                "DBUS_SESSION_BUS_ADDRESS=unix:path=" + runtime + "/bus"};
+            for (const char* name : {"DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"}) {
+                if (qEnvironmentVariableIsSet(name)) args << QString("%1=%2").arg(QString::fromLatin1(name), qEnvironmentVariable(name));
+            }
+            args << "xdg-open" << dir;
+            started = QProcess::startDetached("runuser", args);
+        }
+    } else {
+        started = QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    }
+    if (!started) QMessageBox::information(parent, "Log folder", "The logs are in:\n\n" + dir);
+}
+
 const char* kStyle = R"(
 * { font-size: 13px; }
 QMainWindow, QWidget#main { background: #1b1e24; }
@@ -141,7 +169,7 @@ MainWindow::MainWindow() {
     sidebar_->addItems({"Install to a drive", "Set up on this system", "Export this machine"});
     sideLayout->addWidget(sidebar_);
     sideLayout->addStretch();
-    sideLayout->addWidget(makeLabel(QString("Version %1").arg(CCCU_GUI_VERSION), "muted"));
+    sideLayout->addWidget(makeLabel(QString("v%1  %2").arg(QString::fromLatin1(CCCU_GUI_VERSION), QString::fromLatin1(CCCU_DATE)), "muted"));
     outer->addWidget(side);
 
     // ---- main area ----
@@ -202,7 +230,7 @@ MainWindow::MainWindow() {
     });
     connect(startButton_, &QPushButton::clicked, this, [this] { start(); });
     connect(cancelButton_, &QPushButton::clicked, this, [this] { cancel(); });
-    connect(openLog, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl::fromLocalFile("/var/log/cccu")); });
+    connect(openLog, &QPushButton::clicked, this, [this] { openLogFolder(this); });
 
     sidebar_->setCurrentRow(0);
     refreshStatus();
@@ -526,6 +554,7 @@ void MainWindow::cancel() {
 
 void MainWindow::readOutput() {
     pending_ += process_->readAll();
+    pending_.replace('\r', '\n');   // rsync and friends redraw their progress line with carriage returns
     for (qsizetype nl; (nl = pending_.indexOf('\n')) >= 0;) {
         handleLine(QString::fromUtf8(pending_.left(nl)));
         pending_.remove(0, nl + 1);
@@ -538,9 +567,17 @@ void MainWindow::handleLine(const QString& rawLine) {
     if (line.contains(QChar(0x2588)) || line.contains(QChar(0x2591))) return;   // the text progress bar: the GUI has its own
 
     // "    ... 42%": progress inside the current step (the bar is 100 units per step).
-    static const QRegularExpression progressRe(R"(^\s+\.\.\. (\d+)%$)");
+    static const QRegularExpression progressRe(R"(^\s+\.\.\. (\d+)%(?:\s+(.*))?$)");
     if (const auto p = progressRe.match(line); p.hasMatch()) {
         bar_->setValue(std::min(bar_->maximum(), (currentStep_ - 1) * 100 + p.captured(1).toInt()));
+        stepLabel_->setText(stepBase_ + "   " + p.captured(1) + "%   " + p.captured(2));
+        return;
+    }
+    // rsync's own overall progress line: "  1,234,567,890  42%   96.00MB/s    0:00:25"
+    static const QRegularExpression rsyncRe(R"(^\s*[\d.,]+\w*\s+(\d+)%\s+(\S+)\s+(\d+:\d+:\d+).*$)");
+    if (const auto r = rsyncRe.match(line); r.hasMatch()) {
+        bar_->setValue(std::min(bar_->maximum(), (currentStep_ - 1) * 100 + r.captured(1).toInt()));
+        stepLabel_->setText(stepBase_ + "   " + r.captured(1) + "%   " + r.captured(2) + "   ETA " + r.captured(3));
         return;
     }
 
@@ -551,7 +588,8 @@ void MainWindow::handleLine(const QString& rawLine) {
         currentStep_ = n;
         bar_->setRange(0, total * 100);
         bar_->setValue((n - 1) * 100);
-        stepLabel_->setText(QString("Step %1 of %2  -  %3").arg(n).arg(total).arg(m.captured(3)));
+        stepBase_ = QString("Step %1 of %2  -  %3").arg(n).arg(total).arg(m.captured(3));
+        stepLabel_->setText(stepBase_);
         appendLog(line, "#4cd964", true);
     } else if (line.startsWith("[ FAIL ]")) {
         appendLog(line, "#ff6b6b", true);
@@ -611,5 +649,5 @@ void MainWindow::setRunning(bool running) {
 
 void MainWindow::appendLog(const QString& text, const QString& color, bool bold) {
     log_->appendHtml(QString("<span style=\"color:%1; white-space:pre;%2\">%3</span>")
-                         .arg(color, bold ? " font-weight:600;" : "", text.toHtmlEscaped()));
+                         .arg(color, QString(bold ? " font-weight:600;" : ""), text.toHtmlEscaped()));
 }

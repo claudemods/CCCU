@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
-project(cccu VERSION 3.0.0 DESCRIPTION "Claudemods Container Creator Unity" LANGUAGES CXX)
+set(CCCU_RELEASE_DATE "29-10-2026")
+project(cccu VERSION 1.0 DESCRIPTION "Claudemods Container Creator Unity" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,7 +26,7 @@ add_executable(cccu
   src/installer.cpp
 )
 target_include_directories(cccu PRIVATE src)
-target_compile_definitions(cccu PRIVATE CCCU_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(cccu PRIVATE CCCU_VERSION="${PROJECT_VERSION}" CCCU_DATE="${CCCU_RELEASE_DATE}")
 target_compile_options(cccu PRIVATE -Wall -Wextra -Wpedantic)
 
 install(TARGETS cccu RUNTIME DESTINATION bin)
@@ -37,7 +38,7 @@ if(CCCU_BUILD_GUI)
   find_package(Qt6 REQUIRED COMPONENTS Widgets)
   set(CMAKE_AUTOMOC ON)
   add_executable(cccu-gui gui/main.cpp gui/mainwindow.cpp gui/mainwindow.hpp)
-  target_compile_definitions(cccu-gui PRIVATE CCCU_GUI_VERSION="${PROJECT_VERSION}")
+  target_compile_definitions(cccu-gui PRIVATE CCCU_GUI_VERSION="${PROJECT_VERSION}" CCCU_DATE="${CCCU_RELEASE_DATE}")
   target_link_libraries(cccu-gui PRIVATE Qt6::Widgets)
   add_dependencies(cccu-gui cccu)   # the GUI needs the backend next to it
   install(TARGETS cccu-gui RUNTIME DESTINATION bin)

@@ -192,8 +192,8 @@ Result make_immutable(const Options& o) {
         if (!run({"incus", "storage", "volume", "create", o.pool, volume}).ok()) return fail("could not create the volume " + volume);
         const fs::path volume_path = fs::path(o.incus_dir) / "storage-pools" / o.pool / "custom" / ("default_" + volume);
         if (!dry_run() && !fs::is_directory(volume_path, ec)) return fail("volume path not found: " + volume_path.string());
-        if (!run({"cp", "-a", "--reflink=auto", (root / dir).string() + "/.", volume_path.string() + "/"}).ok()) {
-            return fail(std::string("could not copy /") + dir + " into its volume");
+        if (auto r = copy_tree_progress((root / dir).string(), volume_path.string(), std::string("/") + dir + " into its volume"); !r) {
+            return r;
         }
         if (!run({"incus", "config", "device", "add", o.name, "state-" + volume, "disk", "pool=" + o.pool,
                   "source=" + volume, std::string("path=/") + dir})

@@ -62,7 +62,8 @@ void console_write(std::string_view chunk);          // command output: erases t
 void status_finish();                                // erase the live line for good
 // Percent of the running command (0-100, -1 = unknown): shown in the live line on a terminal; without a
 // terminal (the GUI reads this) a line "    ... 42%" is printed whenever it changes.
-void status_progress(int percent);
+// `detail` is shown next to it, e.g. "1.8 GiB / 4.2 GiB  96 MiB/s  ETA 00:25".
+void status_progress(int percent, std::string_view detail = {});
 
 // ---- log file ---------------------------------------------------------------------------------
 //

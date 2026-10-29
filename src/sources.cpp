@@ -2,6 +2,7 @@
 
 #include "proc.hpp"
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 
@@ -143,11 +144,17 @@ Result extract_image(const std::string& image, const fs::path& root) {
         if (!run({"fsck.erofs", "--extract=" + root.string(), image}).ok()) return fail("fsck.erofs failed for " + image);
         return {};
     }
-    if (!run({"tar", "--numeric-owner", "--xattrs", "--xattrs-include=*", "--acls", "-xpf", image,
-              "-C", root.string()})
-             .ok()) {
+    std::error_code ec;
+    const unsigned long long packed = fs::file_size(image, ec);
+    info("Extracting " + image + (ec ? std::string() : " (" + human_bytes(packed) + ")") + "  ->  " + root.string());
+    RunOptions extracting;
+    extracting.progress_total = ec ? 0 : packed;   // tar reads the archive: bytes read / archive size = percent
+    const auto started = std::chrono::steady_clock::now();
+    if (!run({"tar", "--numeric-owner", "--xattrs", "--xattrs-include=*", "--acls", "-xpf", image, "-C", root.string()}, extracting).ok()) {
         return fail("could not extract " + image);
     }
+    status_finish();
+    info("Extracted in " + std::to_string(static_cast<long>(std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count())) + " s");
     return {};
 }
 
@@ -228,7 +235,8 @@ Result populate(const Options& options, const fs::path& root) {
 namespace {
 
 Result clone_host(const Options& options, const fs::path& root) {
-    std::vector<std::string> argv = {"rsync", "-aHAXS", "--numeric-ids", "--info=progress2"};
+    // progress2 = one overall line (bytes, percent, speed, ETA); stats2 = the summary (files, sizes) at the end.
+    std::vector<std::string> argv = {"rsync", "-aHAXS", "--numeric-ids", "--info=progress2,stats2"};
     for (const auto& pattern : clone_excludes(options)) argv.push_back("--exclude=" + pattern);
     argv.push_back("/");
     argv.push_back(root.string() + "/");

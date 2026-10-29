@@ -103,5 +103,6 @@ private:
     QByteArray pending_;     // output not yet ended by a newline
     bool running_ = false;
     int currentStep_ = 1;
+    QString stepBase_;       // "Step 3 of 12  -  Title": the detail (bytes, speed, ETA) is appended to it
     Mode runningMode_ = Install;
 };

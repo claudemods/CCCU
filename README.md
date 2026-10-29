@@ -100,8 +100,12 @@ still missing. Type a row number to change it, `S` to start (only possible when 
 +------------------------------------------------------------------------------+
 ```
 
-Long silent commands (such as writing an export image) report a real percentage, measured from the bytes the
-command has read.
+Every copy shows what it does. A file copy (the desktop image, the installer, `resolv.conf`) prints the source,
+the destination and the size, then a live line with percentage, bytes copied, speed and ETA, and ends with a
+summary (size, time, average speed, how much stayed sparse). A folder copy prints the number of files and
+folders and the total size first, and the same summary at the end. Cloning with rsync shows its overall progress
+and the file/size statistics; extracting an image shows the percentage read. Other long silent commands (such as
+writing an export image) report a real percentage, measured from the bytes the command has read.
 
 While an installation runs, every step prints a header with a counter (`[3/12]`), an overall progress bar and
 the elapsed time. A live status line (spinner, step time, total time) stays at the bottom and keeps moving even
@@ -110,7 +114,8 @@ and what the commands print is shown in dark green. Colour and the live line swi
 output is not a terminal or `NO_COLOR` is set.
 
 **First boot after an installation.** The `cccu-firstboot` service runs on a real terminal (VT1), so the same
-progress display appears live while the container is created; the login console returns when it finishes. The
+progress display appears live while the container is created; when it finishes, the login screen (SDDM, or the
+container's own display manager in native mode) takes over the screen. The
 output is also available with `journalctl -u cccu-firstboot -f`.
 
 ## Build
@@ -281,7 +286,7 @@ One record per line - `date time LEVEL text`:
 
 ```
 ============================================================================
- CCCU 3.0.0  -  Claudemods Container Creator Unity
+ CCCU v1.0 29-10-2026  -  Claudemods Container Creator Unity
  started : 2026-10-29 14:03:11.482
  host    : live
  command : cccu install --drive /dev/sda --image desktop.tar.zst --yes

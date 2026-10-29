@@ -374,7 +374,7 @@ bool settings(Mode mode, Options& o, Flags& flags) {
             notice = "Cannot start yet: fill in every setting that shows a red NOT SET box.";
             continue;
         }
-        if (!command.empty() && std::all_of(command.begin(), command.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; })) {
+        if (!command.empty() && command.size() <= 4 && std::all_of(command.begin(), command.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; })) {
             const std::size_t n = std::stoul(command);
             if (n >= 1 && n <= rows.size()) {
                 rows[n - 1].edit();
