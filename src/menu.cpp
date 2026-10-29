@@ -1,5 +1,6 @@
 #include "menu.hpp"
 
+#include "bootstrap.hpp"
 #include "proc.hpp"
 #include "sources.hpp"
 #include "util.hpp"
@@ -177,7 +178,72 @@ std::string or_none(const std::string& text) { return text.empty() ? "none" : te
 
 std::string host_source_text(const Options& o) {
     if (o.clone_system) return "clone of this running system";
+    if (!o.host_iso.empty()) return "ISO: " + o.host_iso;
+    if (const bootstrap::Preset* preset = bootstrap::find(o.host_bootstrap)) return "base list: " + preset->title;
     return o.host_image.empty() ? "live ISO image (default)" : o.host_image;
+}
+
+// Where the tty host system comes from. The base package lists are built in: the user picks one and sees
+// what it contains, nobody types a package list.
+void edit_host_source(Options& o, std::string& notice) {
+    info("");
+    info("Where does the tty host system come from?");
+    info("  1) The live ISO you booted (default)");
+    info("  2) A clone of the running system");
+    info("  3) A system image file (squashfs / erofs / tar)");
+    info("  4) An ISO file (its root file system is used)");
+    info("  5) A fresh base system from a built-in package list (downloaded and installed)");
+    const std::string choice = ask("Choose (1-5)");
+    if (choice.empty()) return;
+
+    std::error_code ec;
+    const auto reset = [&o] {
+        o.clone_system = false;
+        o.host_image.clear();
+        o.host_iso.clear();
+        o.host_bootstrap.clear();
+    };
+    if (choice == "1") {
+        reset();
+    } else if (choice == "2") {
+        reset();
+        o.clone_system = true;
+    } else if (choice == "3") {
+        const std::string path = ask("Path to the system image");
+        if (fs::is_regular_file(path, ec)) {
+            reset();
+            o.host_image = path;
+        } else {
+            notice = "File not found: " + path;
+        }
+    } else if (choice == "4") {
+        const std::string path = ask("Path to the ISO file");
+        if (fs::is_regular_file(path, ec)) {
+            reset();
+            o.host_iso = path;
+        } else {
+            notice = "File not found: " + path;
+        }
+    } else if (choice == "5") {
+        const auto& lists = bootstrap::presets();
+        info("");
+        info("Base package lists:");
+        for (std::size_t i = 0; i < lists.size(); ++i) {
+            std::string packages;
+            for (const auto& p : lists[i].packages) packages += (packages.empty() ? "" : " ") + p;
+            info("  " + std::to_string(i + 1) + ") " + lists[i].title);
+            info("       " + packages);
+        }
+        const std::string pick = ask("Choose (1-" + std::to_string(lists.size()) + ")");
+        if (pick.size() == 1 && pick[0] >= '1' && pick[0] < static_cast<char>('1' + lists.size())) {
+            reset();
+            o.host_bootstrap = lists[static_cast<std::size_t>(pick[0] - '1')].id;
+        } else if (!pick.empty()) {
+            notice = "Choose a number from 1 to " + std::to_string(lists.size()) + ".";
+        }
+    } else {
+        notice = "Type a number from 1 to 5.";
+    }
 }
 
 std::vector<Row> rows_for(Mode mode, Options& o, Flags& flags, std::string& notice) {
@@ -204,11 +270,7 @@ std::vector<Row> rows_for(Mode mode, Options& o, Flags& flags, std::string& noti
             if (fs::is_regular_file(answer, ec)) o.image = answer;
             else notice = "File not found: " + answer;
         }});
-        rows.push_back({"tty host system", host_source_text(o), false, [&o] {
-            const std::string source = ask("'running' = clone the system you booted, a path to an image, or empty = the live ISO's image");
-            o.clone_system = (source == "running");
-            o.host_image = (source == "running") ? std::string() : source;
-        }});
+        rows.push_back({"tty host system", host_source_text(o), false, [&o, &notice] { edit_host_source(o, notice); }});
         rows.push_back({"Hostname", o.hostname, true, [&o, &notice] {
             const std::string answer = ask("Hostname for the new system", o.hostname);
             if (valid_hostname(answer)) o.hostname = answer;

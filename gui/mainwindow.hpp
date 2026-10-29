@@ -80,6 +80,7 @@ private:
     QLineEdit* installImage_ = nullptr;
     QComboBox* hostSource_ = nullptr;
     QLineEdit* hostImage_ = nullptr;
+    QComboBox* hostPreset_ = nullptr;
     QLineEdit* hostname_ = nullptr;
     QLineEdit* rootPass_ = nullptr;
     QComboBox* fs_ = nullptr;

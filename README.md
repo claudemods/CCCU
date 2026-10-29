@@ -40,12 +40,13 @@ compressed and immutable) storage, and boot straight into its KDE Plasma desktop
 4. [Build](#build)
 5. [Desktop version (Qt6)](#desktop-version-qt6)
 6. [Usage](#usage)
-7. [Container storage](#container-storage)
-8. [Supported systems](#supported-systems)
-9. [Logging](#logging)
-10. [Source layout](#source-layout)
-11. [FAQ](#faq)
-12. [Status and roadmap](#status-and-roadmap)
+7. [The tty host system](#the-tty-host-system)
+8. [Container storage](#container-storage)
+9. [Supported systems](#supported-systems)
+10. [Logging](#logging)
+11. [Source layout](#source-layout)
+12. [FAQ](#faq)
+13. [Status and roadmap](#status-and-roadmap)
 
 ## Overview
 
@@ -235,6 +236,48 @@ the tool asks on the terminal.
 | `--fs ext4\|btrfs` | host system filesystem |
 | `--keep-kernel` `--keep-caches` `--no-start` `--dry-run` `--yes` | see `cccu --help` |
 
+## The tty host system
+
+A drive install needs a small system to run Incus on. "tty host system" in the settings chooses where it comes
+from:
+
+| Source | Option | What happens |
+|---|---|---|
+| Live ISO you booted (default) | - | the root image of the running live ISO is installed |
+| Clone of the running system | `--clone-system` | the system you booted is copied with rsync |
+| System image file | `--host-image <file>` | a squashfs / erofs / tar image is extracted |
+| **ISO file** | `--host-iso <file>` | the ISO is mounted, its root file system found and extracted |
+| **Base package list** | `--host-bootstrap <list>` | a fresh base system is downloaded and installed from a built-in list |
+
+**ISO files.** CCCU finds the root file system by itself: Arch (`airootfs.sfs` / `.erofs`), Debian live
+(`live/filesystem.squashfs`), Ubuntu and Mint (`casper/filesystem.squashfs`, also the layered `minimal` images),
+Fedora and relatives (`LiveOS/squashfs.img` / `rootfs.img`), or else the largest squashfs/erofs image on the ISO.
+Because a live system boots by searching for its ISO, CCCU afterwards removes the live-boot parts (archiso,
+casper, live-boot, dracut-live, the installer) and installs a kernel if the ISO has none, so the system boots
+from the drive. Netinstall ISOs that only download their system have no root file system: use a base list.
+
+**Base package lists.** You choose one; nobody types a package list. The list is built in and shown in the
+menu (and as a tooltip in the GUI):
+
+| List | Installed with | Packages |
+|---|---|---|
+| `arch` | `pacstrap` | `base linux linux-firmware networkmanager sudo nano` |
+| `debian` | `debootstrap`, Debian stable | kernel, systemd, dbus, udev, locales, network-manager, sudo, nano, initramfs-tools, ... |
+| `ubuntu` | `debootstrap`, Ubuntu 24.04 LTS | the same, with the Ubuntu kernel |
+| `fedora` | `dnf --installroot`, same release as the live system | `@core kernel dracut-config-generic NetworkManager sudo nano` |
+
+The tool needed (`pacstrap`, `debootstrap`) is installed in the live system when missing, and the packages are
+verified with the distribution's signing keys (they are never skipped; if the keys are missing, CCCU stops and
+says which package provides them - on Arch the Debian/Ubuntu keyrings are in the AUR). The Fedora list needs a
+Fedora live system. `--host-packages <file>` adds your own extra packages (one per line) to a list. After the base
+system is in place, CCCU installs Incus, the bootloader and the rest of what the host needs, exactly as for any
+other source.
+
+```bash
+sudo cccu install --drive /dev/sda --image desktop.tar.zst --host-iso ~/Downloads/debian-live.iso --user alice --size 60 --yes
+sudo cccu install --drive /dev/sda --image desktop.tar.zst --host-bootstrap debian --user alice --size 60 --yes
+```
+
 ## Container storage
 
 The container gets its **own btrfs storage pool** (loop-backed, so the size is enforced). When you choose the
@@ -314,7 +357,7 @@ grep ' #6 ' /var/log/cccu/install.log        # everything about command 6
 
 `gui/`: the Qt6 desktop version (`mainwindow` window, settings pages and live log; `main`).
 
-`src/`: `main` command line and run control, `menu` main menu and settings screens, `util` terminal UI, progress
+`src/`: `bootstrap` ISO extraction and the built-in base package lists, `main` command line and run control, `menu` main menu and settings screens, `util` terminal UI, progress
 and logging, `proc` command execution, `hostinstall` drive installation, `drive` partitioning, `installer`
 container pipeline and running-system setup, `distro` family detection and per-distro commands, `incus` Incus
 wrapper, `profiles` container profile, `sources` image/clone/export, `rootfs` system adaptation, `config` options.
@@ -344,6 +387,8 @@ image, field-testing of the non-Arch paths, non-systemd inits.
 ---
 
 <div align="center">
+
+*Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!*
 
 **[ Support Me ](https://www.paypal.com/paypalme/claudemods?country.x=GB&locale)** · [claudemodsreloaded.co.uk](https://www.claudemodsreloaded.co.uk)
 

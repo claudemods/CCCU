@@ -283,18 +283,33 @@ QWidget* MainWindow::buildPage(Mode mode) {
         addRow(Install, "Desktop image", fileRow(installImage_, false, imageFilter), {installImage_}, true, isFile(installImage_));
 
         hostSource_ = new QComboBox;
-        hostSource_->addItems({"Live ISO image (default)", "Clone of this running system", "Image file ..."});
+        hostSource_->addItems({"Live ISO you booted (default)", "Clone of this running system", "Image file ...", "ISO file ...",
+                               "Base package list"});
         hostImage_ = new QLineEdit;
-        hostImage_->setPlaceholderText("tty host system image");
+        hostImage_->setPlaceholderText("tty host system image or ISO");
+        // The base lists are built in: pick one, nothing to type. The tooltip shows what it installs.
+        hostPreset_ = new QComboBox;
+        hostPreset_->addItem("Arch Linux  (pacstrap)", "arch");
+        hostPreset_->addItem("Debian stable  (debootstrap)", "debian");
+        hostPreset_->addItem("Ubuntu 24.04 LTS  (debootstrap)", "ubuntu");
+        hostPreset_->addItem("Fedora, same release as the live system  (dnf)", "fedora");
+        hostPreset_->setToolTip("Arch: base linux linux-firmware networkmanager sudo nano\n"
+                                "Debian / Ubuntu: kernel, systemd, dbus, udev, locales, network-manager, sudo, nano, initramfs-tools ...\n"
+                                "Fedora: @core kernel dracut NetworkManager sudo nano (needs a Fedora live system)");
+        hostPreset_->setEnabled(false);
         auto* hostRow = new QWidget;
         auto* hostLayout = new QHBoxLayout(hostRow);
         hostLayout->setContentsMargins(0, 0, 0, 0);
         hostLayout->addWidget(hostSource_);
-        hostLayout->addWidget(fileRow(hostImage_, false, imageFilter), 1);
+        hostLayout->addWidget(fileRow(hostImage_, false, imageFilter + ";;ISO files (*.iso)"), 1);
+        hostLayout->addWidget(hostPreset_);
         hostImage_->parentWidget()->setEnabled(false);
-        connect(hostSource_, &QComboBox::currentIndexChanged, this, [this](int index) { hostImage_->parentWidget()->setEnabled(index == 2); });
-        addRow(Install, "tty host system", hostRow, {hostSource_, hostImage_}, true,
-               [this, f = isFile(hostImage_)] { return hostSource_->currentIndex() < 2 || f(); });
+        connect(hostSource_, &QComboBox::currentIndexChanged, this, [this](int index) {
+            hostImage_->parentWidget()->setEnabled(index == 2 || index == 3);   // image file or ISO file
+            hostPreset_->setEnabled(index == 4);                                // base package list
+        });
+        addRow(Install, "tty host system", hostRow, {hostSource_, hostImage_, hostPreset_}, true,
+               [this, f = isFile(hostImage_)] { return hostSource_->currentIndex() < 2 || hostSource_->currentIndex() == 4 || f(); });
 
         hostname_ = new QLineEdit("cccu");
         addRow(Install, "Hostname", hostname_, {hostname_}, true, [this] { return validHostname(hostname_->text().trimmed()); });
@@ -474,6 +489,8 @@ QStringList MainWindow::buildArgs(Mode mode) const {
                  << "--hostname" << hostname_->text().trimmed() << "--fs" << fs_->currentText();
             if (hostSource_->currentIndex() == 1) args << "--clone-system";
             if (hostSource_->currentIndex() == 2) args << "--host-image" << absolutize(hostImage_->text());
+            if (hostSource_->currentIndex() == 3) args << "--host-iso" << absolutize(hostImage_->text());
+            if (hostSource_->currentIndex() == 4) args << "--host-bootstrap" << hostPreset_->currentData().toString();
         } else {
             args << "setup";
             if (runSource_->currentIndex() == 1) args << "--clone-host";

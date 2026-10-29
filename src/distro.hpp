@@ -33,4 +33,11 @@ std::vector<std::string> map_packages(Family family, const std::vector<std::stri
 std::string install_missing_script(Family family, const std::vector<std::string>& packages);  // skips installed ones
 std::string initramfs_and_boot_script(Family family);                                        // initramfs + GRUB
 
+// A system taken from a live ISO still has the live-boot machinery (archiso / casper / live-boot / dracut-live
+// hooks) that looks for the ISO at boot. This removes it, so the initramfs boots from the drive.
+std::string live_cleanup_script(Family family);
+
+// The kernel package(s) for a family, for a system source that has no kernel in /boot.
+std::vector<std::string> kernel_packages(Family family, const std::string& id);
+
 }  // namespace cccu::distro

@@ -147,12 +147,14 @@ std::string install_missing_script(Family family, const std::vector<std::string>
     script += "if [ -z \"$missing\" ]; then echo \"Everything the host needs is already installed.\"; exit 0; fi\n"
               "echo \"Installing in the new system:$missing\"\n";
     switch (family) {
-        case Family::Debian: script += "DEBIAN_FRONTEND=noninteractive apt-get install -y $missing\n"; break;
+        case Family::Debian:   // a system from an ISO has empty package lists: refresh them first
+            script += "DEBIAN_FRONTEND=noninteractive apt-get update || true\nDEBIAN_FRONTEND=noninteractive apt-get install -y $missing\n";
+            break;
         case Family::Fedora: script += "dnf install -y $missing\n"; break;
         case Family::Suse: script += "zypper --non-interactive install $missing\n"; break;
         default:
             script += "[ -s /etc/pacman.d/gnupg/trustdb.gpg ] || { pacman-key --init; pacman-key --populate; }\n"
-                      "pacman -S --noconfirm --needed $missing\n";
+                      "pacman -S --noconfirm --needed $missing || pacman -Sy --noconfirm --needed $missing\n";   // an ISO has no sync databases
             break;
     }
     return script;
@@ -169,6 +171,50 @@ std::string initramfs_and_boot_script(Family family) {
             return "set -e\ndracut --regenerate-all --force\ngrub2-install " + efi + "\ngrub2-mkconfig -o /boot/grub2/grub.cfg\n";
         default:
             return "set -e\nmkinitcpio -P\ngrub-install " + efi + "\ngrub-mkconfig -o /boot/grub/grub.cfg\n";
+    }
+}
+
+std::string live_cleanup_script(Family family) {
+    switch (family) {
+        case Family::Debian:   // Debian live (live-boot), Ubuntu / Mint (casper), and their installers
+            return "for p in casper live-boot live-boot-initramfs-tools live-config live-config-systemd live-tools ubiquity ubiquity-casper "
+                   "ubiquity-frontend-gtk ubiquity-frontend-kde ubiquity-slideshow-ubuntu calamares calamares-settings-debian "
+                   "calamares-settings-ubuntu; do\n"
+                   "    dpkg -s \"$p\" >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get purge -y \"$p\" || true\n"
+                   "done\n";
+        case Family::Fedora:
+        case Family::Suse:
+            return "for p in livesys-scripts anaconda-live dracut-live; do\n"
+                   "    rpm -q \"$p\" >/dev/null 2>&1 && " + std::string(family == Family::Fedora ? "dnf remove -y" : "zypper --non-interactive remove") +
+                   " \"$p\" || true\n"
+                   "done\n";
+        default:   // archiso: its mkinitcpio hook and preset make the initramfs look for the ISO
+            return "rm -f /etc/mkinitcpio.conf.d/archiso.conf\n"
+                   "for p in mkinitcpio-archiso archiso; do\n"
+                   "    pacman -Q \"$p\" >/dev/null 2>&1 && pacman -Rdd --noconfirm \"$p\" || true\n"
+                   "done\n"
+                   "if [ -e /boot/vmlinuz-linux ] || pacman -Q linux >/dev/null 2>&1; then\n"
+                   "cat > /etc/mkinitcpio.d/linux.preset <<'EOF'\n"
+                   "ALL_config=\"/etc/mkinitcpio.conf\"\n"
+                   "ALL_kver=\"/boot/vmlinuz-linux\"\n"
+                   "PRESETS=('default' 'fallback')\n"
+                   "default_image=\"/boot/initramfs-linux.img\"\n"
+                   "fallback_image=\"/boot/initramfs-linux-fallback.img\"\n"
+                   "fallback_options=\"-S autodetect\"\n"
+                   "EOF\n"
+                   "fi\n";
+    }
+}
+
+std::vector<std::string> kernel_packages(Family family, const std::string& id) {
+    switch (family) {
+        case Family::Debian: {
+            const bool ubuntu_like = id == "ubuntu" || id == "linuxmint" || id == "pop" || id == "neon";
+            return {ubuntu_like ? "linux-image-generic" : "linux-image-amd64"};
+        }
+        case Family::Fedora: return {"kernel"};
+        case Family::Suse: return {"kernel-default"};
+        default: return {"linux", "linux-firmware"};
     }
 }
 

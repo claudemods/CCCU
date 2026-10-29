@@ -25,6 +25,11 @@ struct Options {
     std::string host_image;              // install mode: image of the small tty host system
     bool clone_host = false;               // alternatively clone the machine we run on
     std::string export_path;               // --export: write the host as a tar image and stop
+    // Where the tty host system comes from (install mode). At most one of: clone_system, host_image,
+    // host_iso, host_bootstrap; none = the root image of the live ISO that was booted.
+    std::string host_iso;                  // an ISO file: its root file system is extracted
+    std::string host_bootstrap;            // a built-in base package list: "arch", "debian", "ubuntu", "fedora"
+    std::string host_packages_file;        // optional: extra packages (one per line) added to that list
     DisplayManager dm = DisplayManager::Auto;
     Display display = Display::Session;
     Method method = Method::Auto;

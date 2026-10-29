@@ -13,6 +13,7 @@ endif()
 add_executable(cccu
   src/main.cpp
   src/menu.cpp
+  src/bootstrap.cpp
   src/util.cpp
   src/proc.cpp
   src/config.cpp

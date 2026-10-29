@@ -1,5 +1,6 @@
 #include "hostinstall.hpp"
 
+#include "bootstrap.hpp"
 #include "distro.hpp"
 #include "drive.hpp"
 #include "proc.hpp"
@@ -219,7 +220,13 @@ Result install_to_drive(Options o) {
     if (!dry_run() && !fs::exists("/sys/firmware/efi")) return fail("Not booted in UEFI mode; reboot the live ISO in UEFI mode.");
 
     std::vector<std::string> tools = drive::required_tools(o);
-    if (!o.clone_system && o.host_image.empty()) {
+    const bool from_iso = !o.host_iso.empty();
+    const bool from_list = !o.host_bootstrap.empty();
+    if (static_cast<int>(o.clone_system) + static_cast<int>(!o.host_image.empty()) + static_cast<int>(from_iso) + static_cast<int>(from_list) > 1) {
+        return fail("Choose ONE source for the tty host system: --clone-system, --host-image, --host-iso or --host-bootstrap.");
+    }
+    if (from_list && !bootstrap::find(o.host_bootstrap)) return fail("Unknown base package list '" + o.host_bootstrap + "' (arch, debian, ubuntu, fedora).");
+    if (!o.clone_system && o.host_image.empty() && !from_iso && !from_list) {
         o.host_image = find_live_rootfs();
         if (o.host_image.empty()) {
             info("No live ISO image found and no --host-image given: using the running system as the tty host.");
@@ -233,6 +240,11 @@ Result install_to_drive(Options o) {
             warn("The running system is an Arch live ISO: its initramfs setup (archiso hooks) may not boot "
                  "from a drive. Prefer cloning an installed system or use --host-image.");
         }
+    } else if (from_iso) {
+        if (!fs::is_regular_file(o.host_iso, ec)) return fail("ISO not found: " + o.host_iso);
+        info("Host (tty) system:    ISO " + o.host_iso);
+    } else if (from_list) {
+        info("Host (tty) system:    base package list - " + bootstrap::find(o.host_bootstrap)->title);
     } else {
         if (!fs::is_regular_file(o.host_image, ec)) return fail("Host image not found: " + o.host_image);
         info("Host (tty) system:    image " + o.host_image);
@@ -252,15 +264,24 @@ Result install_to_drive(Options o) {
         clone.keep_kernel = true;   // the host needs its kernel in /boot
         clone.keep_caches = false;
         if (auto r = sources::clone_running(clone, drive::kTarget); !r) return r;
+    } else if (from_iso) {
+        if (auto r = bootstrap::from_iso(o.host_iso, drive::kTarget); !r) return r;
+    } else if (from_list) {
+        if (auto r = bootstrap::from_list(o, drive::kTarget); !r) return r;
     } else if (auto r = sources::extract_image(o.host_image, drive::kTarget); !r) {
         return r;
     }
+    // A live ISO (or a minimal image) may carry no kernel in /boot: it is then installed with the host packages.
+    bool kernel_missing = false;
     if (!dry_run()) {
         bool has_kernel = false;
         for (const auto& entry : fs::directory_iterator(fs::path(drive::kTarget) / "boot", ec)) {
             if (entry.path().filename().string().rfind("vmlinuz", 0) == 0) has_kernel = true;
         }
-        if (!has_kernel) return fail("The host image has no kernel in /boot (vmlinuz-*). Use an image that contains one.");
+        if (!has_kernel) {
+            kernel_missing = true;
+            warn("The host system has no kernel in /boot (vmlinuz-*): one is installed together with the host packages.");
+        }
     }
     if (auto r = drive::mount_efi(layout); !r) return r;
     if (!dry_run()) {
@@ -292,8 +313,15 @@ Result install_to_drive(Options o) {
     std::vector<std::string> generic = {"incus", "grub", "efibootmgr", "tar", "btrfs-progs"};
     for (const auto& tool : sources::image_tools(o.image)) generic.push_back(package_for(tool));
     for (const char* pkg : {"sddm", "qt6-wayland", "cage", "mesa", "pipewire", "pipewire-pulse", "wireplumber"}) generic.emplace_back(pkg);
+    if (kernel_missing) {
+        for (const auto& pkg : distro::kernel_packages(base.family, base.id)) generic.push_back(pkg);
+    }
     // Packages already installed in the new system are skipped; only the missing ones are installed.
     if (auto r = in_chroot(distro::install_missing_script(base.family, distro::map_packages(base.family, generic))); !r) return r;
+    if (from_iso) {
+        step("Removing the live-system parts from the ISO system");
+        if (auto r = in_chroot(distro::live_cleanup_script(base.family)); !r) return r;
+    }
     if (auto r = rootfs::adapt_host(drive::kTarget, o); !r) return r;
 
     if (!o.user.empty()) {

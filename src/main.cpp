@@ -1,3 +1,4 @@
+#include "bootstrap.hpp"
 #include "config.hpp"
 #include "hostinstall.hpp"
 #include "installer.hpp"
@@ -42,6 +43,10 @@ install options
   --image <file>            desktop image (squashfs/erofs/tar) made with --export
   --host-image <file>       tty host system image (default: the live ISO's own root image)
   --clone-system            instead clone the system you booted (rsync) as the tty host
+  --host-iso <file>         instead use the root file system of an ISO (Arch, Debian, Ubuntu, Fedora ... live ISOs)
+  --host-bootstrap <list>   instead install a fresh base system from a built-in package list:
+                            arch (pacstrap), debian, ubuntu (debootstrap), fedora (dnf, needs a Fedora live system)
+  --host-packages <file>    extra packages (one per line) added to that list
   --name <name>             container name (default: desktop)
   --hostname <name>         host name of the new tty system (default: cccu)
   --size <N>[GiB]           container root disk size (there is no default)
@@ -118,6 +123,16 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
             o.clone_system = true;
         } else if (a == "--host-image") {
             if (!value(o.host_image)) return 2;
+        } else if (a == "--host-iso") {
+            if (!value(o.host_iso)) return 2;
+        } else if (a == "--host-bootstrap") {
+            if (!value(o.host_bootstrap)) return 2;
+            if (!bootstrap::find(o.host_bootstrap)) {
+                error("Bad --host-bootstrap: " + o.host_bootstrap + " (arch, debian, ubuntu or fedora)");
+                return 2;
+            }
+        } else if (a == "--host-packages") {
+            if (!value(o.host_packages_file)) return 2;
         } else if (a == "--export") {
             if (!value(o.export_path)) return 2;
         } else if (a == "--drive") {
