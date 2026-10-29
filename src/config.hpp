@@ -36,7 +36,11 @@ struct Options {
     std::string staging = "/var/tmp";
 
     std::string user;                      // desktop user: created on the host if missing, gets Incus access
-    bool autologin = false;                // log `user` in automatically (off by default)
+    bool autologin = true;                 // log `user` in automatically (default; needs a user)
+    std::string hostname = "claudeincus";  // host name of the new tty system
+    std::string container_size;            // root disk of the container, e.g. "40GiB" (asked, no default)
+    std::string compression;               // btrfs compression for the container storage: "", "zstd:15", "zlib:9", "lzo"...
+    bool immutable = false;                // container system mounted read-only (state in separate volumes)
     std::vector<std::string> extra_excludes;
     bool keep_kernel = false;              // keep /boot and mkinitcpio/dracut pacman hooks
     bool keep_caches = false;              // keep pacman package cache and ~/.cache

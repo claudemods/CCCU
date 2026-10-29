@@ -16,6 +16,7 @@ Result adapt(const std::filesystem::path& root, const Options& options);
 
 // Configures a freshly installed host tree to run Incus. Session mode: the host's SDDM offers the
 // "Container Plasma" session. Native mode: tty-only host, VT1 left to the container's display manager.
-Result adapt_host(const std::filesystem::path& root, const Options& options);
+// `running` = the tree is the live system (/): its hostname, machine-id and network setup are left alone.
+Result adapt_host(const std::filesystem::path& root, const Options& options, bool running = false);
 
 }  // namespace claudeincus::rootfs

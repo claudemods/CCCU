@@ -1,5 +1,6 @@
 #include "rootfs.hpp"
 
+#include "distro.hpp"
 #include "incus.hpp"
 #include "proc.hpp"
 
@@ -268,6 +269,11 @@ Result adapt(const fs::path& root, const Options& options) {
         return fail("systemd not found in " + root.string() + "; this installer targets systemd-based Arch");
     }
 
+    const distro::Info image = distro::detect(root);
+    if (!image.reason.empty() && image.family == distro::Family::Unsupported) {
+        return fail("Cannot make a container from " + image.name + ": " + image.reason + ".");
+    }
+    info("Container system:     " + image.name + " - " + distro::family_name(image.family));
     step("Adapting the copied system for a container");
     identity(root, options);
     pacman(root, options);
@@ -278,18 +284,22 @@ Result adapt(const fs::path& root, const Options& options) {
     return {};
 }
 
-Result adapt_host(const fs::path& root, const Options& o) {
+Result adapt_host(const fs::path& root, const Options& o, bool running) {
     if (dry_run()) {
         info("(dry run) would configure " + root.string() + " as the host");
         return {};
     }
     step("Configuring the host system");
     std::error_code ec;
-    log_write(write_text(root / "etc/hostname", "claudeincus-host\n"));
-    log_write(write_text(root / "etc/machine-id", ""));
+    // A running system keeps its own hostname, machine-id and network setup.
+    if (!running) {
+        log_write(write_text(root / "etc/hostname", o.hostname + "\n"));
+        log_write(write_text(root / "etc/hosts", "127.0.0.1\tlocalhost\n::1\t\tlocalhost\n127.0.1.1\t" + o.hostname + "\n"));
+        log_write(write_text(root / "etc/machine-id", ""));
+    }
     fs::remove(root / "etc/systemd/system/display-manager.service", ec);
 
-    networking(root, "en* eth*");
+    if (!running) networking(root, "en* eth*");
 
     if (o.display == Display::Session) {
         // The host runs SDDM; its "Container Plasma" session shows the container's desktop.

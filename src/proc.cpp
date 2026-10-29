@@ -35,9 +35,7 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
     const std::string command_line = join(argv);
     const bool stream = !options.capture && !options.interactive;  // we relay output to screen + log
 
-    if (!options.quiet && !options.capture) {
-        std::cout << color::yellow << "  $ " << command_line << color::reset << std::endl;
-    }
+    // The command itself is not shown on screen (only in the log); what it prints is dark green.
     log_raw("$ " + command_line + (g_dry_run && options.mutating ? "   (dry run, skipped)\n" : "\n"));
     if (g_dry_run && options.mutating) {
         result.code = 0;
@@ -46,6 +44,17 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
 
     int pipefd[2] = {-1, -1};
     if ((options.capture || stream) && ::pipe(pipefd) != 0) return result;
+
+    // Everything the command prints (also what it prints straight to the terminal) is dark green.
+    struct DarkGreen {
+        bool on;
+        explicit DarkGreen(bool enable) : on(enable) {
+            if (on) std::cout << color::dark_green << std::flush;
+        }
+        ~DarkGreen() {
+            if (on) std::cout << color::reset << std::flush;
+        }
+    } dark_green(!options.capture);
 
     std::cout.flush();
     const pid_t pid = ::fork();

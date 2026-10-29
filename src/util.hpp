@@ -15,12 +15,16 @@ inline std::unexpected<std::string> fail(std::string message) {
 }
 
 namespace color {
-inline constexpr const char* red = "\033[31m";
-inline constexpr const char* green = "\033[32m";
+inline constexpr const char* red = "\033[1;31m";
+inline constexpr const char* green = "\033[1;32m";              // what is happening
+inline constexpr const char* dark_green = "\033[0;38;5;28m";    // what the commands print
 inline constexpr const char* yellow = "\033[33m";
 inline constexpr const char* cyan = "\033[38;2;0;255;255m";
 inline constexpr const char* reset = "\033[0m";
 }  // namespace color
+
+// The red claudemods banner.
+void print_banner();
 
 void info(std::string_view message);
 void ok(std::string_view message);
@@ -46,6 +50,9 @@ Result write_text(const std::filesystem::path& path, std::string_view content,
                                                 std::filesystem::perms::owner_write |
                                                 std::filesystem::perms::group_read |
                                                 std::filesystem::perms::others_read);
+
+// "4.2 GiB", "850 MiB".
+std::string human_bytes(unsigned long long bytes);
 
 // Incus instance names: letters, digits and '-', starting with a letter, max 63 chars.
 bool valid_instance_name(std::string_view name);

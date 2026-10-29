@@ -101,7 +101,8 @@ Result prepare(const Options& o, Layout& layout) {
                 std::error_code ec;
                 fs::create_directories(mount_point, ec);
             }
-            const std::string options = std::string("subvol=") + sv.name + ",compress=zstd";
+            const std::string options = std::string("subvol=") + sv.name +
+                                        (o.compression.empty() ? "" : ",compress=" + o.compression);
             if (!run({"mount", "-o", options, layout.root_part, mount_point}).ok()) {
                 return fail("could not mount subvolume " + std::string(sv.name));
             }

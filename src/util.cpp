@@ -1,6 +1,7 @@
 #include "util.hpp"
 
 #include <cctype>
+#include <cstdio>
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -46,13 +47,26 @@ void emit(const char* tint, std::string_view message) {
 }
 }  // namespace
 
-void info(std::string_view message) { emit(color::cyan, message); }
+// What is happening: green. What the commands print: dark green (see run() in proc.cpp).
+void info(std::string_view message) { emit(color::green, message); }
 void ok(std::string_view message) { emit(color::green, message); }
 void warn(std::string_view message) { emit(color::yellow, message); }
 void error(std::string_view message) { emit(color::red, message); }
 void step(std::string_view message) {
-    std::cout << '\n' << color::cyan << "==> " << message << color::reset << std::endl;
+    std::cout << '\n' << color::green << "==> " << message << color::reset << std::endl;
     log_raw("\n[" + timestamp() + "] ==> " + std::string(message) + "\n");
+}
+
+void print_banner() {
+    std::cout << color::red << R"BANNER(░█████╗░██╗░░░░░░█████╗░██║░░░██╗██████╗░███████╗███╗░░░███╗░█████╗░██████╗░░██████╗
+██╔══██╗██║░░░░░██╔══██╗██║░░░██║██╔══██╗██╔════╝████╗░████║██╔══██╗██╔══██╗██╔════╝
+██║░░╚═╝██║░░░░░███████║██║░░░██║██║░░██║█████╗░░██╔████╔██║██║░░██║██║░░██║╚█████╗░
+██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗
+╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝
+░╚════╝░╚══════╝╚═╝░░╚═╝░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░
+claudemods container creator unity v1.0 29-10-2026
+Sailing The Seven Seas like Penguin's Eggs Remastersys, Refracta, Systemback and father Knoppix!)BANNER"
+              << color::reset << std::endl;
 }
 
 std::string trim(std::string_view text) {
@@ -79,7 +93,7 @@ std::vector<std::string> split_lines(std::string_view text) {
 }
 
 std::string ask(std::string_view question, std::string_view fallback) {
-    std::cout << color::cyan << question;
+    std::cout << color::green << question;
     if (!fallback.empty()) std::cout << " [" << fallback << "]";
     std::cout << ": " << color::reset << std::flush;
     std::string answer;
@@ -122,6 +136,14 @@ Result write_text(const std::filesystem::path& path, std::string_view content,
     std::filesystem::permissions(path, mode, ec);
     if (ec) return fail("cannot chmod " + path.string() + ": " + ec.message());
     return {};
+}
+
+std::string human_bytes(unsigned long long bytes) {
+    char buffer[32];
+    const double gib = static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0);
+    if (gib >= 1.0) std::snprintf(buffer, sizeof buffer, "%.1f GiB", gib);
+    else std::snprintf(buffer, sizeof buffer, "%.0f MiB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+    return buffer;
 }
 
 bool valid_instance_name(std::string_view name) {

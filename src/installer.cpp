@@ -1,5 +1,6 @@
 #include "installer.hpp"
 
+#include "distro.hpp"
 #include "incus.hpp"
 #include "proc.hpp"
 #include "profiles.hpp"
@@ -7,6 +8,7 @@
 #include "sources.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 
 namespace claudeincus {
@@ -98,6 +100,23 @@ Result prepare_host(Options& o) {
         run({"usermod", "-aG", "incus-admin", sudo_user});
     }
 
+    // The size that was asked: the container gets its own btrfs storage of exactly that size (a loop-backed
+    // pool, so the size is enforced), mounted with the chosen compression.
+    if (!o.container_size.empty() && o.pool.empty()) {
+        const std::string pool = "claudeincus";
+        if (std::find(pools.begin(), pools.end(), pool) == pools.end()) {
+            step("Creating the container storage: btrfs, " + o.container_size +
+                 (o.compression.empty() ? std::string() : ", compression " + o.compression));
+            std::string mount = "user_subvol_rm_allowed";
+            if (!o.compression.empty()) mount += ",compress=" + o.compression;
+            if (!run({"incus", "storage", "create", pool, "btrfs", "size=" + o.container_size, "btrfs.mount_options=" + mount}).ok()) {
+                return fail("could not create the btrfs storage pool (is btrfs-progs installed?)");
+            }
+            pools = incus::storage_pools();
+        }
+        o.pool = pool;
+    }
+
     if (o.pool.empty()) {
         o.pool = std::find(pools.begin(), pools.end(), "default") != pools.end() ? "default" : pools.front();
     } else if (std::find(pools.begin(), pools.end(), o.pool) == pools.end()) {
@@ -156,6 +175,38 @@ Result create_import(const Options& o) {
     auto created = incus::init(o.name, alias, {profiles::name(o.display)}, o.pool);
     static_cast<void>(incus::delete_image(alias));  // the image is only a transport
     return created;
+}
+
+// Immutable container: the system is mounted read-only; /etc, /var, /home, /root, /opt, /srv and /usr/local live
+// on their own volumes (copied from the system first) and stay writable. Run before the container starts.
+Result make_immutable(const Options& o) {
+    step("Making the container immutable");
+    const fs::path root = incus::rootfs_path(o);
+    std::error_code ec;
+    if (!dry_run() && !fs::is_directory(root, ec)) return fail("cannot find the container rootfs " + root.string());
+    for (const char* dir : {"etc", "var", "home", "root", "opt", "srv", "usr/local"}) {
+        if (!dry_run() && !fs::is_directory(root / dir, ec)) continue;
+        std::string volume = o.name + "-" + dir;
+        std::replace(volume.begin(), volume.end(), '/', '-');
+        if (!run({"incus", "storage", "volume", "create", o.pool, volume}).ok()) return fail("could not create the volume " + volume);
+        const fs::path volume_path = fs::path(o.incus_dir) / "storage-pools" / o.pool / "custom" / ("default_" + volume);
+        if (!dry_run() && !fs::is_directory(volume_path, ec)) return fail("volume path not found: " + volume_path.string());
+        if (!run({"cp", "-a", "--reflink=auto", (root / dir).string() + "/.", volume_path.string() + "/"}).ok()) {
+            return fail(std::string("could not copy /") + dir + " into its volume");
+        }
+        if (!run({"incus", "config", "device", "add", o.name, "state-" + volume, "disk", "pool=" + o.pool,
+                  "source=" + volume, std::string("path=/") + dir})
+                 .ok()) {
+            return fail("could not attach the volume " + volume);
+        }
+    }
+    run({"incus", "config", "set", o.name, "raw.lxc", "lxc.mount.entry = tmpfs tmp tmpfs defaults,mode=1777 0 0"});
+    if (!run({"incus", "config", "device", "set", o.name, "root", "readonly=true"}).ok()) {
+        return fail("could not make the root disk read-only");
+    }
+    info("The container system is read-only now. To update it: incus config device set " + o.name +
+         " root readonly=false, restart, update, then set it back to true.");
+    return {};
 }
 
 // Dumps what is needed to see why the desktop container shows no login screen. Everything
@@ -245,6 +296,9 @@ Result create_container(Options o) {
 
     // The desktop container comes up on every boot of the tty host.
     if (auto r = incus::set_config(o.name, "boot.autostart", "true"); !r) warn(r.error());
+    if (o.immutable) {
+        if (auto r = make_immutable(o); !r) return r;
+    }
 
     // Two systems cannot own the GPU/VT at once; never start into a running host desktop.
     // (Session mode is the opposite: the host desktop is how you reach the container.)
@@ -260,6 +314,63 @@ Result create_container(Options o) {
     ok("Container '" + o.name + "' is ready.");
     print_next_steps(o, started);
     return {};
+}
+
+Result setup_running_system(Options o) {
+    if (!is_root()) return fail("This must run as root: sudo claudeincus-installer");
+    if (o.name.empty()) o.name = "desktop";
+    if (!valid_instance_name(o.name)) {
+        return fail("Invalid container name '" + o.name + "' (letters, digits and '-', must start with a letter).");
+    }
+    if (o.image.empty() && !o.clone_host) return fail("No system to install: give --image <file> or --clone-host.");
+
+    const distro::Info host = distro::detect("/");
+    if (host.family == distro::Family::Unsupported) {
+        for (const auto& line : distro::supported_list()) info("  " + line);
+        return fail("Cannot use " + host.name + " as the container host: " + host.reason + ".");
+    }
+    info("This system:          " + host.name + " - " + distro::family_name(host.family));
+
+    step("Installing what this host needs to run the container");
+    // Generic names; distro.cpp maps them to this system's package names. Installed ones are skipped.
+    std::vector<std::string> generic = {"incus", "tar", "btrfs-progs", "sddm", "qt6-wayland", "cage", "mesa",
+                                        "pipewire", "pipewire-pulse", "wireplumber"};
+    for (const auto& tool : sources::required_tools(o)) {
+        if (tool == "unsquashfs") generic.push_back("squashfs-tools");
+        else if (tool == "fsck.erofs") generic.push_back("erofs-utils");
+        else generic.push_back(tool);
+    }
+    const std::string script = distro::install_missing_script(host.family, distro::map_packages(host.family, generic));
+    if (!run({"bash", "-c", script}).ok()) return fail("could not install what the host needs");
+
+    if (!o.user.empty()) {
+        const auto allowed = [](char c) { return std::islower(static_cast<unsigned char>(c)) || std::isdigit(static_cast<unsigned char>(c)) || c == '_' || c == '-'; };
+        if (!std::all_of(o.user.begin(), o.user.end(), allowed)) {
+            return fail("Invalid user name '" + o.user + "' (lowercase letters, digits, - and _ only).");
+        }
+        step("Desktop user '" + o.user + "'");
+        const bool created = query({"id", o.user}).empty();
+        // Needs the incus-admin group: the session starts and talks to the container as this user.
+        if (!run({"bash", "-c",
+                  "user=" + o.user + "\n"
+                  "id \"$user\" >/dev/null 2>&1 || useradd -m -s /bin/bash \"$user\"\n"
+                  "for g in incus-admin wheel video audio input render; do\n"
+                  "    getent group $g >/dev/null && usermod -aG $g \"$user\" || true\n"
+                  "done\n"})
+                 .ok()) {
+            return fail("could not set up the user " + o.user);
+        }
+        if (created) {
+            info("New user: set its password.");
+            RunOptions tty;
+            tty.interactive = true;
+            run({"passwd", o.user}, tty);
+        }
+    }
+
+    step("Configuring this system as the container host");
+    if (auto r = rootfs::adapt_host("/", o, true); !r) return r;
+    return create_container(o);
 }
 
 Result export_image(const Options& o) {

@@ -58,6 +58,27 @@ std::vector<std::string> clone_excludes(const Options& options) {
     return excludes;
 }
 
+std::string describe_image(const std::string& image) {
+    if (is_squashfs(image)) return "squashfs";
+    if (is_erofs(image)) return "erofs";
+    if (ends_with(image, ".zst") || ends_with(image, ".zstd")) return "zstd-compressed tar";
+    if (ends_with(image, ".xz")) return "xz-compressed tar";
+    if (ends_with(image, ".gz") || ends_with(image, ".tgz")) return "gzip-compressed tar";
+    return "tar";
+}
+
+unsigned long long estimate_unpacked_bytes(const std::string& image) {
+    std::error_code ec;
+    const double packed = static_cast<double>(fs::file_size(image, ec));
+    if (ec) return 0;
+    double factor = 1.0;
+    if (is_squashfs(image) || is_erofs(image)) factor = 2.0;
+    else if (ends_with(image, ".zst") || ends_with(image, ".zstd")) factor = 3.0;
+    else if (ends_with(image, ".xz")) factor = 3.5;
+    else if (ends_with(image, ".gz") || ends_with(image, ".tgz")) factor = 2.5;
+    return static_cast<unsigned long long>(packed * factor);
+}
+
 std::vector<std::string> image_tools(const std::string& image) {
     if (is_squashfs(image)) return {"unsquashfs"};
     if (is_erofs(image)) return {"fsck.erofs"};

@@ -14,6 +14,11 @@ std::vector<std::string> clone_excludes(const Options& options);
 // Unpacks a squashfs, erofs or tar(.zst/.xz/.gz) image into `root` (an existing directory).
 Result extract_image(const std::string& image, const std::filesystem::path& root);
 
+// A short description of the image ("zstd-compressed tar", "squashfs"...) and a rough guess of the bytes it needs
+// once unpacked (squashfs ~2x, erofs ~2x, tar.zst ~3x, tar.xz ~3.5x, tar.gz ~2.5x, plain tar 1x).
+std::string describe_image(const std::string& image);
+unsigned long long estimate_unpacked_bytes(const std::string& image);
+
 // Host tools needed to unpack `image`.
 std::vector<std::string> image_tools(const std::string& image);
 

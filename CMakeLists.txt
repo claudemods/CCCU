@@ -14,6 +14,7 @@ add_executable(claudeincus-installer
   src/util.cpp
   src/proc.cpp
   src/config.cpp
+  src/distro.cpp
   src/drive.cpp
   src/hostinstall.cpp
   src/incus.cpp
