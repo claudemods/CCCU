@@ -35,11 +35,11 @@ struct Options {
     std::string incus_dir = "/var/lib/incus";
     std::string staging = "/var/tmp";
 
-    std::string user;                      // desktop user: created on the host if missing, gets Incus access
-    bool autologin = true;                 // log `user` in automatically (default; needs a user)
+    std::string user;                      // account on the tty HOST (required): created if missing, gets Incus access, logged in automatically
+    std::string container_user;            // the user INSIDE the cloned system whose desktop runs (default: same as `user`)
     std::string hostname = "claudeincus";  // host name of the new tty system
     std::string container_size;            // root disk of the container, e.g. "40GiB" (asked, no default)
-    std::string compression;               // btrfs compression for the container storage: "", "zstd:15", "zlib:9", "lzo"...
+    std::string compression;               // btrfs compression for the container storage: "", "zstd:22", "zlib:9", "lzo"...
     bool immutable = false;                // container system mounted read-only (state in separate volumes)
     std::vector<std::string> extra_excludes;
     bool keep_kernel = false;              // keep /boot and mkinitcpio/dracut pacman hooks

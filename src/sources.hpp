@@ -19,6 +19,10 @@ Result extract_image(const std::string& image, const std::filesystem::path& root
 std::string describe_image(const std::string& image);
 unsigned long long estimate_unpacked_bytes(const std::string& image);
 
+// Login users (uid 1000-59999 with a real shell) of the cloned system, read from its /etc/passwd: out of the image,
+// or from this running system when `image` is empty. Empty when it cannot be read (erofs images).
+std::vector<std::string> image_users(const std::string& image);
+
 // Host tools needed to unpack `image`.
 std::vector<std::string> image_tools(const std::string& image);
 

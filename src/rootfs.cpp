@@ -192,7 +192,7 @@ void desktop(const fs::path& root, const Options& o) {
                          "[Unit]\nAfter=systemd-user-sessions.service systemd-logind.service\n"
                          "ConditionPathExists=/dev/tty0\n"));
 
-    if (o.autologin && !o.user.empty()) write_autologin(root, dm, o.user, session_file(root));
+    if (!o.user.empty()) write_autologin(root, dm, o.user, session_file(root));
 }
 
 // Host side of Session mode: a "Container Plasma" login session. It waits for the container,
@@ -202,6 +202,7 @@ void write_session(const fs::path& root, const Options& o) {
     std::string script = R"SH(#!/bin/sh
 # claudeincus session: shows the KDE Plasma of the Incus container __CONTAINER__ in this host session.
 C=__CONTAINER__
+CU=__CUSER__          # the user inside the container (it can have a different name than the host account)
 if [ "$1" != "--inner" ]; then
     n=0
     until incus info "$C" >/dev/null 2>&1; do      # first boot may still be creating it
@@ -212,9 +213,9 @@ if [ "$1" != "--inner" ]; then
 fi
 
 # ---- inside the kiosk compositor ----
-U=$(id -un); HID=$(id -u); HGID=$(id -g)
-CUID=$(incus exec "$C" -- id -u "$U") || exit 1
-CGID=$(incus exec "$C" -- id -g "$U")
+HID=$(id -u); HGID=$(id -g)
+CUID=$(incus exec "$C" -- id -u "$CU") || exit 1
+CGID=$(incus exec "$C" -- id -g "$CU")
 proxy() {   # name host-socket container-socket
     incus config device remove "$C" "$1" >/dev/null 2>&1
     incus config device add "$C" "$1" proxy bind=container connect="unix:$2" listen="unix:$3" \
@@ -223,9 +224,11 @@ proxy() {   # name host-socket container-socket
 proxy waylandSocket "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" /mnt/wayland-0
 [ -S "$XDG_RUNTIME_DIR/pipewire-0" ] && proxy pipewireSocket "$XDG_RUNTIME_DIR/pipewire-0" /mnt/pipewire-0
 [ -S "$XDG_RUNTIME_DIR/pulse/native" ] && proxy pulseSocket "$XDG_RUNTIME_DIR/pulse/native" /mnt/pulse-native
-exec incus exec "$C" -- su -l "$U" -s /bin/sh -c 'R=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; ln -sf /mnt/wayland-0 "$R/wayland-0"; [ -S /mnt/pipewire-0 ] && ln -sf /mnt/pipewire-0 "$R/pipewire-0"; export XDG_RUNTIME_DIR="$R" WAYLAND_DISPLAY=wayland-0 XDG_SESSION_TYPE=wayland; [ -S /mnt/pulse-native ] && export PULSE_SERVER=unix:/mnt/pulse-native; exec dbus-run-session startplasma-wayland'
+exec incus exec "$C" -- su -l "$CU" -s /bin/sh -c 'R=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; ln -sf /mnt/wayland-0 "$R/wayland-0"; [ -S /mnt/pipewire-0 ] && ln -sf /mnt/pipewire-0 "$R/pipewire-0"; export XDG_RUNTIME_DIR="$R" WAYLAND_DISPLAY=wayland-0 XDG_SESSION_TYPE=wayland; [ -S /mnt/pulse-native ] && export PULSE_SERVER=unix:/mnt/pulse-native; exec dbus-run-session startplasma-wayland'
 )SH";
     for (std::size_t pos; (pos = script.find("__CONTAINER__")) != std::string::npos;) script.replace(pos, 13, o.name);
+    const std::string container_user = o.container_user.empty() ? o.user : o.container_user;
+    for (std::size_t pos; (pos = script.find("__CUSER__")) != std::string::npos;) script.replace(pos, 9, container_user);
 
     log_write(write_text(root / "usr/local/bin/claudeincus-session", script,
                          fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
@@ -324,7 +327,7 @@ Result adapt_host(const fs::path& root, const Options& o, bool running) {
             const char* conf_dir = (dm == "plasmalogin") ? "etc/plasmalogin.conf.d" : "etc/sddm.conf.d";
             log_write(write_text(root / conf_dir / "10-claudeincus-wayland.conf",
                                  "[General]\nDisplayServer=wayland\n\n[Wayland]\nCompositorCommand=cage -s --\n"));
-            if (o.autologin && !o.user.empty()) write_autologin(root, dm, o.user, "claudeincus.desktop");
+            if (!o.user.empty()) write_autologin(root, dm, o.user, "claudeincus.desktop");   // the only way to log in
         }
         systemctl(root, {"enable", "getty@tty2.service"});
     } else {

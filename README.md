@@ -26,11 +26,11 @@
 </div>
 
 # 🐧 Claudemods Container Creator Unity
-🌊 *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!*
 
 > **Create Incus system containers from cloned Linux systems** — clone the Linux you already run, put it in a
 > container with its own sized (and optionally compressed and immutable) storage, and boot straight into its
-> KDE desktop on a tiny tty host. 
+> KDE desktop on a tiny tty host. 🌊 *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta,
+> Systemback and father Knoppix!*
 
 ---
 
@@ -53,16 +53,50 @@ You have a Linux system you love — your **desktop, your apps, your settings**.
 
 ---
 
+## ⚡ Quick start
+
+```bash
+# 1️⃣ on the machine you want to clone
+sudo ./claudeincus-installer --export desktop.tar.zst
+
+# 2️⃣ on the machine that will host the container (or boot an Arch live ISO and pick option 1 to wipe a drive)
+sudo ./claudeincus-installer          # → 2  Set up the container on this running system
+```
+
+That is it — it asks the rest like a normal installer. 🎉
+
+## 🖼️ What the installer looks like
+
+```
+░█████╗░██╗░░░░░░█████╗░██║░░░██╗██████╗░███████╗███╗░░░███╗░█████╗░██████╗░░██████╗
+██╔══██╗██║░░░░░██╔══██╗██║░░░██║██╔══██╗██╔════╝████╗░████║██╔══██╗██╔══██╗██╔════╝
+██║░░╚═╝██║░░░░░███████║██║░░░██║██║░░██║█████╗░░██╔████╔██║██║░░██║██║░░██║╚█████╗░
+██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗
+╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝
+░╚════╝░╚══════╝╚═╝░░╚═╝░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░
+claudemods container creator unity v1.0 29-10-2026
+Sailing The Seven Seas like Penguin's Eggs Remastersys, Refracta, Systemback and father Knoppix!
+
+1. Install to a drive (wipe it: EFI boot + tty host + desktop container)
+2. Set up the container on this running system (installs what the host needs)
+3. Export this machine as a desktop image
+Choose (1-3) [1]:
+```
+
+🔴 banner · 🟢 *what is happening* · 🌲 dark green = *what the commands print* (the commands themselves stay hidden, but are kept in the log).
+
+---
+
 ## 🚀 Features
 
 | | |
 |---|---|
 | 🎨 **Interactive installer** | red claudemods banner, green status text, dark green command output — the commands themselves stay hidden |
-| 🧭 **Normal-installer questions** | hostname, username, auto-login, filesystem, container name… no silent guesses |
+| 🧭 **Normal-installer questions** | hostname, username, filesystem, container name… no silent guesses |
 | 📏 **Container size you choose** | **no default** — the installer hints a size from the image you give it, then asks |
-| 🗜️ **Compression choice** | zstd `15 / 9 / 3`, zlib `9`, lzo or none — applied to the container's btrfs storage (and a btrfs host) |
+| 🗜️ **Compression choice** | zstd `22 / 15 / 9 / 3`, zlib `9`, lzo or none — applied to the container's btrfs storage (and a btrfs host) |
 | 🔒 **Optional immutable container** | system mounted **read-only**, `/etc /var /home /root /opt /srv /usr/local` stay writable |
-| 🔑 **Auto-login by default** | straight to the desktop; one question to turn it off |
+| 🔑 **Auto-login, always** | your user goes straight into the desktop — there is no login screen and no option to turn it off |
 | 🖥️ **Running-system mode** | set up the container on the machine you are on (a tty system) — the host's dependencies are installed for you |
 | 💾 **Drive mode** | wipes a drive: GPT, EFI + system partition (ext4 or btrfs), GRUB, Incus, first-boot container creation |
 | 📤 **Export** | write any running Linux as a `.tar.zst` image to clone elsewhere |
@@ -124,10 +158,10 @@ sudo ./build/claudeincus-installer --export desktop.tar.zst
 Menu option **1**, or:
 
 ```bash
-sudo ./claudeincus-installer install --drive /dev/sda --image desktop.tar.zst --user YOURUSER --size 60 --compress zstd:15
+sudo ./claudeincus-installer install --drive /dev/sda --image desktop.tar.zst --user YOURUSER --size 60 --compress zstd:22
 ```
 
-You are asked, like a normal installer: **drive → image → tty host source → hostname → username → auto-login → filesystem → container name → container size → compression → immutable**.
+You are asked, like a normal installer: **drive → image → tty host source → hostname → user in the clone → tty host username → filesystem → container name → container size → compression → immutable**.
 
 ### 3️⃣ Set up from a running system (a tty system)
 
@@ -148,10 +182,10 @@ Menu option **2**. Your current system becomes the container host:
 | `--image <file>` | system image (`.tar` `.tar.zst` `.tar.xz` `.tar.gz`, squashfs, erofs) |
 | `--clone-host` | clone the running machine instead of an image |
 | `--hostname <name>` | hostname of the new tty system |
-| `--user <name>` | desktop user (created if missing, added to `incus-admin`) |
-| `--autologin` / `--no-autologin` | auto-login is the **default** |
+| `--user <name>` | the account on the **tty host** — **required**: created if missing, added to `incus-admin`, logged in automatically |
+| `--container-user <name>` | the user **inside the cloned system** whose desktop runs (default: same as `--user`; the installer lists the clone's users) |
 | `--size <N>[GiB]` | container disk size — there is **no default** |
-| `--compress <level>` | `zstd:15` `zstd:9` `zstd:3` `zlib:9` `lzo` `none` |
+| `--compress <level>` | `zstd:22` `zstd:15` `zstd:9` `zstd:3` `zlib:9` `lzo` `none` |
 | `--immutable` | mount the container's system read-only |
 | `--fs ext4\|btrfs` | host system filesystem |
 | `--keep-kernel` `--keep-caches` `--no-start` `--dry-run` `-y` | see `--help` |
@@ -177,12 +211,11 @@ Applied as btrfs mount options on the container's pool (and on the host when it 
 
 | Choice | |
 |---|---|
-| `zstd:15` | the strongest zstd **btrfs** supports ⭐ |
+| `zstd:22` | strongest ⭐ |
+| `zstd:15` | very strong |
 | `zstd:9`, `zstd:3` | balanced / fast |
 | `zlib:9`, `lzo` | alternatives |
 | `none` | no compression |
-
-> ⚠️ **btrfs supports zstd levels 1–15 only.** Level 22 exists only for zstd *archives* (like the exported `.tar.zst`), not for btrfs mounts — so the strongest choice is `zstd:15`.
 
 ### 🔒 Immutable
 
@@ -211,6 +244,31 @@ Every command and its output is kept in the log; on screen the **commands are hi
 ## 🗂️ Source layout (`src/`)
 
 `main` CLI + questions · `hostinstall` drive install · `drive` partitioning · `installer` container pipeline + running-system setup · `distro` family detection and per-distro commands · `incus` Incus wrapper · `profiles` container profile · `sources` image/clone/export · `rootfs` system adaptation · `proc` / `util` / `config` helpers
+
+## ❓ FAQ
+
+**Is the container a virtual machine?** No. It is an **Incus system container** — a full systemd system that **shares the host kernel**, so the GPU, input and sound work natively. No second kernel, no emulation. 🚀
+
+**Is there a login screen?** No. Auto-login is the **only** way: the user you pick is logged straight into the desktop at boot. 🔑
+
+**Do I create a user for the container?** No — it is a **clone**, so its users already exist. The installer lists them and you pick one. 👤 The tty host account that logs in automatically can have a **different name**; the session starts the desktop as the container user. 🔁
+
+**Do I have to give a size?** Yes. There is **no default**: the installer hints one from your image, then asks. 📏
+
+**What compression can I pick?** `zstd:22` ⭐, `zstd:15`, `zstd:9`, `zstd:3`, `zlib:9`, `lzo` or none — applied as btrfs mount options on the container's pool.
+
+**What does immutable do?** The container's system is read-only; `/etc /var /home /root /opt /srv /usr/local` stay writable on their own volumes. 🔒
+
+**Which systems can be the host / the container?** 20 systems across the Arch, Debian, Fedora and openSUSE families — see the table above. Systems without systemd (Void, Devuan, Artix, Gentoo, Slackware) and NixOS / KDE Linux are refused with the reason.
+
+**Where are the logs?** `/var/log/claudeincus/` — `install.log`, `container.log`, `export.log`. 🪵
+
+## 🗺️ Roadmap
+
+- 🐳 Docker containers from a cloned system (today: Incus system containers)
+- 🧱 bootstrapping a base for other distros without a ready-made image
+- 🧪 field-testing the Debian, Fedora and openSUSE paths
+- 🌐 non-systemd inits (OpenRC, runit)
 
 ## ⚠️ Status
 

@@ -164,7 +164,7 @@ Result stage_desktop(const Options& o) {
 
     std::string command = "/usr/local/bin/claudeincus-installer " + o.name + " --image " + staged + " --yes";
     if (!o.user.empty()) command += " --user " + o.user;
-    command += o.autologin ? " --autologin" : " --no-autologin";
+    if (!o.container_user.empty()) command += " --container-user " + o.container_user;
     // What was answered at the install: the container storage is created from these on the first boot.
     command += " --size " + o.container_size;
     command += " --compress " + (o.compression.empty() ? std::string("none") : o.compression);

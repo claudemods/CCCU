@@ -5,6 +5,7 @@
 #include "sources.hpp"
 #include "util.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <filesystem>
@@ -40,8 +41,7 @@ install options
   --name <name>             container name (default: desktop)
   --hostname <name>         host name of the new tty system (default: claudeincus)
   --size <N>[GiB]           container root disk size (asked in the menu; there is no default)
-  --compress <level>        compression of the container storage: zstd:15 zstd:9 zstd:3 zlib:9 lzo none
-                            (btrfs supports zstd levels 1-15; level 22 only exists for zstd archives)
+  --compress <level>        compression of the container storage: zstd:22 zstd:15 zstd:9 zstd:3 zlib:9 lzo none
   --immutable               mount the container system read-only (state lives in separate volumes)
 
 Container options
@@ -49,9 +49,9 @@ Container options
   --display session|native  session (default): the HOST runs SDDM and offers a "Container Plasma" session
                             that shows the container's desktop; native: the container runs its own
                             display manager on VT1 and the host stays on text consoles
-  --user <name>             the desktop user: created on the host if missing, added to incus-admin
-  --autologin               log --user in automatically (the default)
-  --no-autologin            show the login screen instead
+  --user <name>             the account on the tty host (required): created if missing, added to incus-admin,
+                            logged in automatically
+  --container-user <name>   the user inside the cloned system whose desktop runs (default: same as --user)
   --dm auto|sddm|plasmalogin|none
   --pool <name>  --method auto|direct|import  --staging <dir>
   --exclude <pattern>       extra rsync exclude (repeatable)
@@ -64,30 +64,30 @@ Container options
 
 // ---- the questions of the installer ------------------------------------------------------------
 
-// Compression of the container's btrfs storage. btrfs supports zstd levels 1-15, zlib 1-9 and lzo;
-// zstd level 22 only exists for zstd archives, not for btrfs.
+// Compression of the container's btrfs storage (btrfs mount option compress=<choice>).
 std::string ask_compression() {
     info("");
     info("Compression for the container's btrfs storage (saves space, costs some CPU):");
-    info("  1) zstd:15   the strongest zstd btrfs can use (btrfs stops at level 15; level 22 is not available)");
-    info("  2) zstd:9");
-    info("  3) zstd:3    fast and still good");
-    info("  4) zlib:9");
-    info("  5) lzo       fastest");
-    info("  6) none");
+    info("  1) zstd:22   strongest");
+    info("  2) zstd:15");
+    info("  3) zstd:9");
+    info("  4) zstd:3    fast and still good");
+    info("  5) zlib:9");
+    info("  6) lzo       fastest");
+    info("  7) none");
     for (int attempt = 0; attempt < 5; ++attempt) {
-        const std::string c = ask("Choose (1-6)", "1");
-        if (c == "1") return "zstd:15";
-        if (c == "2") return "zstd:9";
-        if (c == "3") return "zstd:3";
-        if (c == "4") return "zlib:9";
-        if (c == "5") return "lzo";
-        if (c == "6") return "none";
-        error("Type a number from 1 to 6.");
+        const std::string c = ask("Choose (1-7)", "1");
+        if (c == "1") return "zstd:22";
+        if (c == "2") return "zstd:15";
+        if (c == "3") return "zstd:9";
+        if (c == "4") return "zstd:3";
+        if (c == "5") return "zlib:9";
+        if (c == "6") return "lzo";
+        if (c == "7") return "none";
+        error("Type a number from 1 to 7.");
     }
-    return "zstd:15";
+    return "zstd:22";
 }
-
 // "40", "40G", "40GB", "40GiB" -> "40GiB"; "" when it is not a size.
 std::string normalize_size(std::string text) {
     text = trim(text);
@@ -154,6 +154,48 @@ void ask_container_choices(Options& o, bool compress_given) {
         info("/etc, /var, /home, /root, /opt, /srv and /usr/local stay writable (their own volumes).");
         info("To update the system later:  incus config device set " + o.name + " root readonly=false   (then restart it).");
         o.immutable = confirm("Make the container immutable?", false);
+    }
+}
+// Two names, because they can differ: the user INSIDE the cloned system (its desktop is what runs; nothing is
+// created there) and the account on the tty HOST (created if missing, logged in automatically).
+void ask_desktop_user(Options& o) {
+    if (o.container_user.empty() && !o.user.empty()) o.container_user = o.user;   // --user alone: same name in both
+
+    if (o.container_user.empty()) {
+        const std::vector<std::string> users = sources::image_users(o.image);   // empty image = this running system
+        info("");
+        info("User in the cloned system: the container is a clone, so its users already exist (nothing is created there).");
+        std::string fallback;
+        if (!users.empty()) {
+            info("Users found in the cloned system:");
+            for (std::size_t i = 0; i < users.size(); ++i) info("  " + std::to_string(i + 1) + ") " + users[i]);
+            fallback = users.front();
+        }
+        for (int attempt = 0; attempt < 5 && o.container_user.empty(); ++attempt) {
+            std::string answer = ask(users.empty() ? "Username in the cloned system" : "Username in the cloned system (number or name)", fallback);
+            if (answer.empty()) {
+                error("A username is required.");
+                continue;
+            }
+            if (std::all_of(answer.begin(), answer.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; })) {
+                const std::size_t n = static_cast<std::size_t>(std::stoul(answer));
+                if (n >= 1 && n <= users.size()) answer = users[n - 1];
+            }
+            if (!users.empty() && std::find(users.begin(), users.end(), answer) == users.end()) {
+                warn("'" + answer + "' is not a user of the cloned system: the container could not start the desktop as that user.");
+                if (!confirm("Use it anyway?", false)) continue;
+            }
+            o.container_user = answer;
+        }
+    }
+    if (o.user.empty()) {
+        info("");
+        info("Account on the tty host: it can have a different name. It is created if missing, gets Incus access and is");
+        info("logged in automatically at boot.");
+        for (int attempt = 0; attempt < 5 && o.user.empty(); ++attempt) {
+            o.user = ask("Username on the tty host", o.container_user);
+            if (o.user.empty()) error("A username is required: the tty host logs this account in automatically.");
+        }
     }
 }
 }  // namespace
@@ -239,10 +281,6 @@ int main(int argc, char** argv) {
             if (!value(o.pool)) return 2;
         } else if (a == "--staging") {
             if (!value(o.staging)) return 2;
-        } else if (a == "--autologin") {
-            o.autologin = true;
-        } else if (a == "--no-autologin") {
-            o.autologin = false;
         } else if (a == "--hostname") {
             if (!value(o.hostname)) return 2;
         } else if (a == "--size") {
@@ -260,6 +298,8 @@ int main(int argc, char** argv) {
             o.immutable = true;
         } else if (a == "--user") {
             if (!value(o.user)) return 2;
+        } else if (a == "--container-user") {
+            if (!value(o.container_user)) return 2;
         } else if (a == "--exclude") {
             if (!value(v)) return 2;
             o.extra_excludes.push_back(v);
@@ -316,11 +356,15 @@ int main(int argc, char** argv) {
         return 1;
     };
 
-    if (o.user.empty()) o.autologin = false;   // nobody to log in
     if (!o.export_path.empty()) {
         const int code = finish(export_image(o));
         if (code == 0) ok("Image written: " + o.export_path);
         return code;
+    }
+    if (o.container_user.empty()) o.container_user = o.user;   // --user alone: same name in the container
+    if ((install_mode || running_mode) && o.assume_yes && o.user.empty()) {
+        error("Unattended setup: --user <name> is required (that user is logged in automatically).");
+        return 2;
     }
 
     if (install_mode) {
@@ -344,9 +388,7 @@ int main(int argc, char** argv) {
                 if (valid_hostname(o.hostname)) break;
                 error("A hostname has letters, digits and - only.");
             }
-            if (o.user.empty()) o.user = ask("Username (created on the host if missing; gets Incus access; empty = none)");
-            if (!o.user.empty()) o.autologin = confirm("Log " + o.user + " in automatically at boot?", true);
-            else o.autologin = false;
+            ask_desktop_user(o);
             if (!fs_given) o.fs = ask("System filesystem (ext4 or btrfs)", o.fs);
             ask_container_choices(o, compress_given);
         } else if (o.container_size.empty()) {
@@ -369,9 +411,7 @@ int main(int argc, char** argv) {
             }
         }
         if (!o.assume_yes) {
-            if (o.user.empty()) o.user = ask("Username for the desktop (created if missing; gets Incus access; empty = none)");
-            if (!o.user.empty()) o.autologin = confirm("Log " + o.user + " in automatically at boot?", true);
-            else o.autologin = false;
+            ask_desktop_user(o);
             // The size hint comes from the image; when cloning this system there is no file to look at.
             if (o.clone_host && o.container_size.empty()) {
                 info("");

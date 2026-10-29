@@ -2,6 +2,7 @@
 
 #include "proc.hpp"
 
+#include <cstdlib>
 #include <fstream>
 
 namespace claudeincus::sources {
@@ -77,6 +78,39 @@ unsigned long long estimate_unpacked_bytes(const std::string& image) {
     else if (ends_with(image, ".xz")) factor = 3.5;
     else if (ends_with(image, ".gz") || ends_with(image, ".tgz")) factor = 2.5;
     return static_cast<unsigned long long>(packed * factor);
+}
+
+std::vector<std::string> image_users(const std::string& image) {
+    std::string text;
+    if (image.empty()) {
+        text = read_text("/etc/passwd");
+    } else {
+        std::vector<std::string> argv;
+        if (is_squashfs(image)) argv = {"unsquashfs", "-cat", image, "etc/passwd"};
+        else if (is_erofs(image)) return {};
+        else argv = {"tar", "-xOf", image, "./etc/passwd"};   // GNU tar detects zstd/xz/gzip by itself
+        RunOptions probe;
+        probe.mutating = false;
+        probe.capture = true;
+        probe.quiet = true;
+        text = run(argv, probe).out;
+    }
+    std::vector<std::string> users;
+    for (const auto& line : split_lines(text)) {
+        std::vector<std::string> f;
+        std::string field;
+        for (char c : line) {
+            if (c == ':') { f.push_back(field); field.clear(); }
+            else field.push_back(c);
+        }
+        f.push_back(field);
+        if (f.size() < 7) continue;
+        const long uid = std::strtol(f[2].c_str(), nullptr, 10);
+        if (uid < 1000 || uid >= 60000) continue;
+        if (ends_with(f[6], "nologin") || ends_with(f[6], "/false")) continue;
+        users.push_back(f[0]);
+    }
+    return users;
 }
 
 std::vector<std::string> image_tools(const std::string& image) {
