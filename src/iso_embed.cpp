@@ -17,8 +17,10 @@ asm(CCCU_EMBED("cccu_embed_engine", CCCU_ENGINE_BIN));
 asm(CCCU_EMBED("cccu_embed_provision", CCCU_PROVISION_SH));
 asm(CCCU_EMBED("cccu_embed_calamares", CCCU_CALAMARES_ZIP));
 asm(CCCU_EMBED("cccu_embed_claudemods", CCCU_CLAUDEMODS_ZIP));
+asm(CCCU_EMBED("cccu_embed_bootloaders", CCCU_BOOTLOADERS_TGZ));
 
 extern "C" {
+extern const char cccu_embed_bootloaders_start[], cccu_embed_bootloaders_end[];
 extern const char cccu_embed_engine_start[], cccu_embed_engine_end[];
 extern const char cccu_embed_provision_start[], cccu_embed_provision_end[];
 extern const char cccu_embed_calamares_start[], cccu_embed_calamares_end[];
@@ -31,5 +33,6 @@ Blob engine() { return {cccu_embed_engine_start, cccu_embed_engine_end}; }
 Blob provision() { return {cccu_embed_provision_start, cccu_embed_provision_end}; }
 Blob calamares() { return {cccu_embed_calamares_start, cccu_embed_calamares_end}; }
 Blob claudemods() { return {cccu_embed_claudemods_start, cccu_embed_claudemods_end}; }
+Blob bootloaders() { return {cccu_embed_bootloaders_start, cccu_embed_bootloaders_end}; }
 
 }  // namespace cccu::iso_embed

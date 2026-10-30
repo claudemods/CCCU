@@ -53,6 +53,9 @@ int main(int argc, char* argv[]) {
     else if (!endsWith(o.isoName, ".iso")) o.isoName += ".iso";
     if (!treeDir.empty()) o.isoTreeDir = treeDir;
 
+    // Arch: mkinitcpio needs claudemods' 11-dm-initramfs.rules (taken from the embedded boot tree)
+    if (distro.family == "archlinux" && !remaster::mkinitcpioConfigReady() && !remaster::ensureMkinitcpioConfig()) return 1;
+
     const std::string outDir = !o.outputDir.empty() ? o.outputDir : (!o.workDir.empty() ? o.workDir : DEFAULT_WORK_DIR);
     mkdirP(outDir);
     if (!remaster::run(o)) return 1;

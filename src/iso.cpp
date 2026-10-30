@@ -202,6 +202,7 @@ Result create_iso(Options o) {
         fs::remove_all(stage, ec);
         fs::create_directories(stage / "resources", ec);
         if (!write_blob(stage / "cccu-iso-engine", iso_embed::engine())) return fail("could not write the ISO engine to " + stage.string());
+        in_container(o.name, "mkdir -p /usr/local/bin", quiet_query());
         if (!run({"incus", "file", "push", "--mode", "0755", (stage / "cccu-iso-engine").string(), o.name + kEnginePath}).ok()) {
             return fail("could not copy the ISO engine into the container");
         }
@@ -217,24 +218,41 @@ Result create_iso(Options o) {
     } else {
         if (!dry_run()) {
             if (!write_blob(stage / "build.sh", iso_embed::provision())) return fail("could not write the provisioning script");
+            // Everything the provisioning needs travels inside cccu, so it never has to download or find a file:
+            // the Calamares files, and for the non-Arch families the bootloader files (Arch has its own in the engine).
             if (o.iso_installer) {
                 if (!write_blob(stage / "resources/calamares-files.zip", iso_embed::calamares()) ||
                     !write_blob(stage / "resources/claudemods.zip", iso_embed::claudemods())) {
                     return fail("could not write the installer files");
                 }
             }
-            in_container(o.name, std::string("rm -rf ") + kProvisionDir + " && mkdir -p " + kProvisionDir + "/resources");
-            std::vector<std::string> push = {"incus", "file", "push", "-r", (stage / "build.sh").string(), o.name + kProvisionDir + "/"};
-            if (!run(push).ok()) return fail("could not copy the provisioning script into the container");
-            if (o.iso_installer && !run({"incus", "file", "push", "-r", (stage / "resources").string(), o.name + kProvisionDir + "/"}).ok()) {
-                return fail("could not copy the installer files into the container");
+            if (iso_embed::bootloaders().size() > 0 && !write_blob(stage / "resources/bootloaders.tar.gz", iso_embed::bootloaders())) {
+                return fail("could not write the bootloader files");
+            }
+            in_container(o.name, std::string("rm -rf ") + kProvisionDir + " && mkdir -p " + kProvisionDir);
+            if (!run({"incus", "file", "push", "-r", (stage / "build.sh").string(), (stage / "resources").string(), o.name + kProvisionDir + "/"}).ok()) {
+                return fail("could not copy the provisioning files into the container");
             }
         }
-        const std::string script =
-            std::string("set -e\ncd ") + kProvisionDir + "\nsh build.sh --root-phase " + family + " " + (o.iso_installer ? "1" : "0") + " " +
-            (o.iso_btrfs ? "1" : "0") + " " + (o.iso_format == "erofs" ? "1" : "0") + " 0\n"
-            "mkdir -p " + kStateDir + "\ntouch '" + marker + "'\nrm -rf " + kProvisionDir + "\n";
-        if (!in_container(o.name, script, {}, {"CBL_NO_COMPILER=1"}).ok()) return fail("installing the ISO tools in the container failed (see above)");
+        const auto provision = [&](bool installer) {
+            const std::string script =
+                std::string("set -e\ncd ") + kProvisionDir + "\nsh build.sh --root-phase " + family + " " + (installer ? "1" : "0") + " " +
+                (o.iso_btrfs ? "1" : "0") + " " + (o.iso_format == "erofs" ? "1" : "0") + " 0\n";
+            return in_container(o.name, script, {}, {"CBL_NO_COMPILER=1"}).ok();
+        };
+        bool installer_done = o.iso_installer;
+        if (!provision(o.iso_installer)) {
+            if (!o.iso_installer) return fail("installing the ISO tools in the container failed (see above)");
+            // The ISO itself does not need the installer: a distribution without a Calamares package still gets its ISO.
+            warn("The Calamares installer could not be installed in this container; building the ISO without it.");
+            if (!provision(false)) return fail("installing the ISO tools in the container failed (see above)");
+            installer_done = false;
+        }
+        if (!dry_run()) {
+            const std::string done = std::string(kStateDir) + "/ready-" + CCCU_VERSION + "-" + family + "-" + (installer_done ? "c" : "n") +
+                                     (o.iso_btrfs ? "b" : "e") + (o.iso_format == "erofs" ? "f" : "s");
+            in_container(o.name, std::string("mkdir -p ") + kStateDir + " && touch '" + done + "'; rm -rf " + kProvisionDir, quiet_query());
+        }
     }
 
     // 6 -----------------------------------------------------------------------------------------
