@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-set(CCCU_RELEASE_DATE "29-10-2026")
+set(CCCU_RELEASE_DATE "30-10-2026")
 project(cccu VERSION 1.0 DESCRIPTION "Claudemods Container Creator Utility" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)

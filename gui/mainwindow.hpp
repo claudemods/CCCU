@@ -107,7 +107,6 @@ private:
     QComboBox* isoInstaller_ = nullptr;
     QCheckBox* isoRam_ = nullptr;
     QCheckBox* isoCache_ = nullptr;
-    QComboBox* isoWhen_ = nullptr;
     QLineEdit* usbIso_ = nullptr;
     QComboBox* usbDrive_ = nullptr;
     // Containers

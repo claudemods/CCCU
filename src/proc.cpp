@@ -128,6 +128,41 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
                 break;
             }
         };
+        // A program that runs without a terminal (the ISO engine inside the container) reports progress as lines
+        // "@@PROGRESS <percent> <text>": they feed the live progress line instead of being printed. Only a partial
+        // line that could still become such a marker is held back, so other output (rsync's \r redraws) is not delayed.
+        std::string held;
+        const auto relay = [&](std::string_view chunk) {
+            constexpr std::string_view marker = "@@PROGRESS ";
+            held.append(chunk);
+            std::string out;
+            std::size_t pos = 0;
+            while (pos < held.size()) {
+                const std::size_t nl = held.find('\n', pos);
+                const std::string_view line(held.data() + pos, (nl == std::string::npos ? held.size() : nl) - pos);
+                if (nl == std::string::npos) {
+                    const bool maybe = !line.empty() && (line.size() < marker.size() ? marker.substr(0, line.size()) == line
+                                                                                     : line.substr(0, marker.size()) == marker);
+                    if (maybe) break;   // wait for the rest of this line
+                    out.append(line);
+                    pos = held.size();
+                    break;
+                }
+                if (line.substr(0, marker.size()) == marker) {
+                    const int percent = std::atoi(std::string(line.substr(marker.size())).c_str());
+                    const std::size_t space = line.find(' ', marker.size());
+                    status_progress(percent, space == std::string_view::npos ? std::string_view() : line.substr(space + 1));
+                } else {
+                    out.append(held, pos, nl - pos + 1);
+                }
+                pos = nl + 1;
+            }
+            held.erase(0, pos);
+            if (!out.empty()) {
+                console_write(out);
+                log_command_output(number, out);
+            }
+        };
         for (;;) {
             // Wake up every 200 ms even when the command is silent, so the live status line
             // (spinner + elapsed time) keeps moving during long steps.
@@ -148,14 +183,17 @@ RunResult run(const std::vector<std::string>& argv, const RunOptions& options) {
                     result.out.append(chunk);
                     if (!options.quiet) log_command_output(number, chunk);   // silent probes stay out of the log
                 } else {
-                    console_write(chunk);
-                    log_command_output(number, chunk);
+                    relay(chunk);
                 }
             } else if (n < 0 && errno == EINTR) {
                 continue;
             } else {
                 break;
             }
+        }
+        if (stream && !held.empty()) {
+            console_write(held);
+            log_command_output(number, held);
         }
         ::close(pipefd[0]);
         if (stream) status_finish();

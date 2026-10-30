@@ -4,8 +4,8 @@
 # Installs the build and runtime dependencies for this machine (Arch, Debian/Ubuntu, Fedora and openSUSE
 # families), then builds the terminal tool (cccu) and the Qt6 desktop version (cccu-gui).
 #
-#   ./build.sh                 install dependencies, build cccu + cccu-gui into ./build
-#   ./build.sh --install       ... and install them system-wide (adds CCCU to the application menu)
+#   ./build.sh                 install dependencies, build cccu + cccu-gui and INSTALL them (direct, one command)
+#   ./build.sh --no-install    build only, do not install (run ./build/cccu from the build folder)
 #   ./build.sh --no-gui        terminal tool only (no Qt6 needed)
 #   ./build.sh --deps-only     only install the dependencies
 #   ./build.sh --no-deps       do not touch the package manager, just build
@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 GUI=1
-INSTALL=0
+INSTALL=1
 DEPS=1
 BUILD=1
 CLEAN=0
@@ -30,6 +30,7 @@ while [ $# -gt 0 ]; do
         --gui) GUI=1 ;;
         --no-gui) GUI=0 ;;
         --install) INSTALL=1 ;;
+        --no-install) INSTALL=0 ;;
         --deps-only) BUILD=0 ;;
         --no-deps) DEPS=0 ;;
         --clean) CLEAN=1 ;;
@@ -194,5 +195,5 @@ fi
 step "Done"
 ok "Terminal tool:  $PWD/$BUILD_DIR/cccu        (run: sudo ./$BUILD_DIR/cccu)"
 if [ "$GUI" -eq 1 ]; then
-    ok "Desktop tool:   $PWD/$BUILD_DIR/cccu-gui    (double-click it, or find CCCU in the application menu after --install)"
+    ok "Desktop tool:   $PWD/$BUILD_DIR/cccu-gui    (double-click it, or find CCCU in the application menu)"
 fi

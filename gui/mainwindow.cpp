@@ -432,7 +432,9 @@ QWidget* MainWindow::buildIsoPage() {
 
     row->addWidget(card("Create a live ISO",
                         "A bootable live ISO of the container's system, built INSIDE the container with the claudebackup engine "
-                        "(Arch, Debian, Fedora and openSUSE families). Users, settings and /home are cloned as they are.",
+                        "(Arch, Debian, Fedora and openSUSE families). Users, settings and /home are cloned as they are. "
+                        "Build ISO sets it up as a service: after the reboot it runs on the console with the progress display, "
+                        "then the login screen appears.",
                         nullptr, Iso), 3);
 
     isoContainer_ = new QComboBox;
@@ -478,13 +480,6 @@ QWidget* MainWindow::buildIsoPage() {
     isoCache_->setChecked(true);
     addRow(Iso, "Clean caches", isoCache_, {isoCache_}, false, [this] { return isoCache_->isChecked(); });
 
-    isoWhen_ = new QComboBox;
-    isoWhen_->addItem("After a reboot, on the console", "reboot");
-    isoWhen_->addItem("Now, on the console (VT1)", "console");
-    isoWhen_->addItem("Now, here in the window", "now");
-    isoWhen_->setToolTip("After a reboot works like the installer's first boot: the system comes up, the ISO is built on the\n"
-                         "console with the progress display, then the login screen appears.");
-    addRow(Iso, "When to build", isoWhen_, {isoWhen_}, true, [] { return true; });
 
     // ---- write to USB ----
     auto* usb = new QFrame;
@@ -761,7 +756,7 @@ void MainWindow::refreshStatus() {
         }
     }
     const Mode mode = currentMode();
-    static const char* startText[] = {"Install", "Set up", "Export", "Build ISO", ""};
+    static const char* startText[] = {"Install", "Set up", "Export", "Set up ISO build", ""};
     const bool hasStart = mode != Containers;
     startButton_->setVisible(hasStart);
     summary_->setVisible(hasStart);
@@ -795,9 +790,7 @@ QStringList MainWindow::buildArgs(Mode mode) const {
         const QString installer = isoInstaller_->currentData().toString();
         if (installer == "none") args << "--no-installer";
         else if (installer == "btrfs") args << "--installer-btrfs";
-        const QString when = isoWhen_->currentData().toString();
-        if (when == "reboot") args << "--on-reboot";
-        else if (when == "console") args << "--on-console";
+        args << "--on-reboot";   // the window only ever sets the build up: the service builds the ISO after the reboot
     } else {
         const Common& c = common_[mode];
         const QString user = c.user->text().trimmed();

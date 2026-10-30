@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
+#include <sys/statvfs.h>
 #include "context.h"
 #include "resources.h"
 
@@ -580,25 +581,60 @@ inline void drawErofsBar(int percentage, int spinnerChar, int secs, const std::s
     std::cout << "\r" << COLOR_GREEN << "[" << bar << "] " << pct << extra << COLOR_RESET << std::flush;
 }
 
-inline int runWithErofsBar(const std::string& cmd, const std::string& output, const std::string& logFile) {
+// Bytes in use on the file system of `path` (the clone of "/"): what mkfs.erofs has to read, about.
+inline unsigned long long usedBytesOf(const std::string& path) {
+    struct statvfs s;
+    if (statvfs(path.c_str(), &s) != 0) return 0;
+    return static_cast<unsigned long long>(s.f_blocks - s.f_bfree) * s.f_frsize;
+}
+
+// Bytes mkfs.erofs has read so far (its /proc/<pid>/io), 0 when it cannot be found
+inline unsigned long long erofsBytesRead() {
+    const std::string pid = captureCommand("pgrep -n mkfs.erofs 2>/dev/null");
+    if (pid.empty() || pid.find_first_not_of("0123456789") != std::string::npos) return 0;
+    for (const auto& line : splitLines(readFile("/proc/" + pid + "/io")))
+        if (startsWith(line, "rchar:")) return strtoull(line.c_str() + 6, nullptr, 10);
+    return 0;
+}
+
+inline int runWithErofsBar(const std::string& cmd, const std::string& output, const std::string& logFile, const std::string& srcDir = "") {
     std::atomic<bool> done(false);
     int rc = 0;
     std::thread worker([&] { rc = runCommand(cmd + " > " + shq(logFile) + " 2>&1"); done = true; });
 
-    std::cout << "\033[?25l";   // hide the cursor while drawing
+    // Run by CCCU (output is a pipe, not a terminal): report the progress as "@@PROGRESS" lines, which CCCU draws as
+    // its live progress line / the window's bar. The percentage is the share of the system read so far.
+    const bool piped = !isatty(STDOUT_FILENO);
+    const unsigned long long total = piped ? usedBytesOf(srcDir.empty() ? "/" : srcDir) : 0;
+
+    if (!piped) std::cout << "\033[?25l";   // hide the cursor while drawing
     auto start = std::chrono::steady_clock::now();
-    int spinnerChar = 0, frame = 0;
+    int spinnerChar = 0, frame = 0, lastPct = -1, tick = 0;
     while (!done) {
         int secs = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count());
-        int pct = std::min(60, std::max(1, secs / 10));
-        if (++frame >= 3) { frame = 0; spinnerChar++; }
-        drawErofsBar(pct, spinnerChar, secs, humanSize(output));
+        if (piped) {
+            if (tick++ % 10 == 0) {   // once a second
+                const unsigned long long read = total ? erofsBytesRead() : 0;
+                int pct = (total && read) ? static_cast<int>(std::min<unsigned long long>(99, read * 100 / total)) : std::min(60, std::max(1, secs / 10));
+                if (pct < lastPct) pct = lastPct;
+                lastPct = pct;
+                std::cout << "@@PROGRESS " << pct << " erofs  " << humanSize(output) << std::endl;
+            }
+        } else {
+            int pct = std::min(60, std::max(1, secs / 10));
+            if (++frame >= 3) { frame = 0; spinnerChar++; }
+            drawErofsBar(pct, spinnerChar, secs, humanSize(output));
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     worker.join();
     int secs = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count());
-    drawErofsBar(rc == 0 ? 100 : std::min(60, std::max(1, secs / 10)), 0, secs, humanSize(output));
-    std::cout << "\033[?25h" << std::endl;
+    if (piped) {
+        std::cout << "@@PROGRESS " << (rc == 0 ? 100 : std::max(lastPct, 1)) << " erofs  " << humanSize(output) << std::endl;
+    } else {
+        drawErofsBar(rc == 0 ? 100 : std::min(60, std::max(1, secs / 10)), 0, secs, humanSize(output));
+        std::cout << "\033[?25h" << std::endl;
+    }
     if (rc != 0) {
         runCommand("tail -n 20 " + shq(logFile));
         logError("mkfs.erofs exited with code " + std::to_string(rc) + (rc == 137 ? " (killed - out of memory)" : ""));
@@ -680,7 +716,7 @@ inline bool runMkerofs(const Context& c, const std::string& dest) {
 
     logNormal("Running: " + cmd);
     logNormal("Creating EROFS image... (mkfs.erofs output: " + STAGING_DIR + "/erofs.log)");
-    bool ok = runWithErofsBar(cmd, dest, STAGING_DIR + "/erofs.log") == 0;
+    bool ok = runWithErofsBar(cmd, dest, STAGING_DIR + "/erofs.log", src) == 0;
     if (ok) logSuccess("EROFS image created: " + dest + " (" + humanSize(dest) + ")");
     logNormal("Unmounting bind mount...");
     if (!unbindRoot(src)) ok = false;
@@ -698,6 +734,40 @@ inline bool squashfsHasCompressor(const std::string& algo) {
                          " -noappend -no-progress -comp " + shq(algo) + " >/dev/null 2>&1") == 0;
     runCommand("rm -rf " + shq(dir));
     return ok;
+}
+
+// Runs a command whose output is NOT a terminal (CCCU runs this engine inside a container through a pipe), so
+// mksquashfs cannot draw its own bar. `cmd` must end with -percentage: mksquashfs then prints the percentage as
+// plain numbers. They are turned into "@@PROGRESS <percent> <label>" lines, which CCCU shows as its live
+// progress line on the console and as the progress bar in the window. Other output is passed through.
+inline int runWithPercent(const std::string& cmd, const std::string& label) {
+    fflush(stdout);
+    FILE* p = popen((cmd + " 2>&1").c_str(), "r");
+    if (!p) return -1;
+    std::string line;
+    int last = -1;
+    auto flushLine = [&]() {
+        if (line.empty()) return;
+        const bool number = line.size() <= 3 && line.find_first_not_of("0123456789") == std::string::npos;
+        if (number) {
+            const int pct = atoi(line.c_str());
+            if (pct != last) {
+                last = pct;
+                std::cout << "@@PROGRESS " << pct << " " << label << std::endl;
+            }
+        } else {
+            std::cout << line << std::endl;
+        }
+        line.clear();
+    };
+    int ch;
+    while ((ch = fgetc(p)) != EOF) {
+        if (ch == '\n' || ch == '\r') flushLine();
+        else line += static_cast<char>(ch);
+    }
+    flushLine();
+    const int status = pclose(p);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 inline bool runMksquashfs(const Context& c, const std::string& dest) {
@@ -734,9 +804,14 @@ inline bool runMksquashfs(const Context& c, const std::string& dest) {
 
     logNormal("Running: " + cmd);
     // mksquashfs draws its progress bar on our terminal: print it in dark green
-    std::cout << COLOR_OUTPUT << std::flush;
-    bool ok = runCommand(cmd) == 0;
-    std::cout << COLOR_RESET << std::flush;
+    bool ok;
+    if (isatty(STDOUT_FILENO)) {
+        std::cout << COLOR_OUTPUT << std::flush;
+        ok = runCommand(cmd) == 0;
+        std::cout << COLOR_RESET << std::flush;
+    } else {
+        ok = runWithPercent(cmd + " -percentage", "squashfs") == 0;   // run by CCCU: it draws the progress
+    }
     logNormal("Unmounting bind mount...");
     if (!unbindRoot(src)) ok = false;
     return ok;

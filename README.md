@@ -39,14 +39,15 @@ compressed and immutable) storage, and boot straight into its KDE Plasma desktop
 3. [The interface](#the-interface)
 4. [Build](#build)
 5. [Desktop version (Qt6)](#desktop-version-qt6)
-6. [Usage](#usage)
-7. [The tty host system](#the-tty-host-system)
-8. [Container storage](#container-storage)
-9. [Supported systems](#supported-systems)
-10. [Logging](#logging)
-11. [Source layout](#source-layout)
-12. [FAQ](#faq)
-13. [Status and roadmap](#status-and-roadmap)
+6. [Live ISOs and several containers](#live-isos-and-several-containers)
+7. [Usage](#usage)
+8. [The tty host system](#the-tty-host-system)
+9. [Container storage](#container-storage)
+10. [Supported systems](#supported-systems)
+11. [Logging](#logging)
+12. [Source layout](#source-layout)
+13. [FAQ](#faq)
+14. [Status and roadmap](#status-and-roadmap)
 
 ## Overview
 
@@ -67,8 +68,8 @@ drive / running system
 ## Quick start
 
 ```bash
-# 0. build and install (dependencies are installed for you)
-bash build.sh --install
+# 0. build and install, directly (dependencies are installed for you)
+bash build.sh
 
 # 1. on the machine you want to clone
 sudo cccu --export desktop.tar.zst
@@ -127,17 +128,18 @@ desktop version additionally needs Qt 6 Widgets.
 ### Build the GUI (Qt6 desktop version)
 
 ```bash
-bash build.sh --install
+bash build.sh
 ```
 
-That is the whole process. It installs the dependencies (including Qt 6), builds **`cccu-gui`** together with the
-terminal tool `cccu`, and adds **CCCU** to your application menu. Then:
+That is the whole process - it installs directly. It installs the dependencies (including Qt 6), builds **`cccu-gui`**
+together with the terminal tool `cccu` and the ISO engine, installs them system-wide and adds **CCCU** to your
+application menu. Then:
 
 * click **CCCU** in the application menu, **or**
-* double-click `build/cccu-gui` in the file manager (if you did not use `--install`).
+* double-click `build/cccu-gui` in the file manager (if you used `--no-install`).
 
 It asks for your password in the normal desktop dialog - no terminal or `sudo` needed to start it.
-Without `--install` the build is the same, just not added to the menu: `bash build.sh`.
+With `--no-install` the build is the same, just not installed: `bash build.sh --no-install`.
 
 ### Build the terminal tool only
 
@@ -153,6 +155,7 @@ dependencies with its package manager, and builds into `build/`.
 
 | Option | |
 |---|---|
+| `--no-install` | build only; the default is to install system-wide (CCCU in the application menu) |
 | `--no-gui` | terminal tool only (no Qt6 needed) |
 | `--deps-only` | only install the dependencies |
 | `--no-deps` | build without touching the package manager |
@@ -161,7 +164,8 @@ dependencies with its package manager, and builds into `build/`.
 
 It checks for a C++23 compiler (GCC 14+ or Clang 17+) and stops with a clear message if the system's is too old.
 The dependencies are the compiler, CMake 3.25+, `rsync`, `tar`, `zstd`, `squashfs-tools`, `parted`, `dosfstools`,
-`e2fsprogs`, `btrfs-progs`, and for the GUI Qt 6 Widgets and polkit. Incus itself is installed later by CCCU
+`e2fsprogs`, `btrfs-progs`, `curl` (the ISO boot files are fetched once and carried inside `cccu`), a static libc for
+the ISO engine (`glibc-static` on Fedora, `glibc-devel-static` on openSUSE), and for the GUI Qt 6 Widgets and polkit. Incus itself is installed later by CCCU
 when it sets up a host.
 
 **By hand - terminal version** (`cccu`):
@@ -185,9 +189,11 @@ Without installing, double-click `build/cccu-gui` in the file manager.
 
 ## Desktop version (Qt6)
 
-`cccu-gui` offers the same three modes in a window. Every setting has the same status box as the terminal menu -
-green `SET`, red `NOT SET`, grey `OPTIONAL` - and **Start** unlocks only when nothing required is red. A progress
-bar follows the steps, and the log shows the installer output live (errors red, warnings amber).
+`cccu-gui` offers every mode on ONE screen, no scrolling: tabs on top (*Install to a drive*, *Set up on this system*,
+*Export*, *Create ISO*, *Containers*), the settings of the tab in a two-column grid, and progress, log and buttons at the
+bottom. Every setting has the same status box as the terminal menu - green `SET`, red `NOT SET`, grey `OPTIONAL` -
+and **Start** unlocks only when nothing required is red. A progress bar follows the steps, and the log shows the
+installer output live (errors red, warnings amber).
 
 * It is a front-end: it runs the `cccu` tool (found next to `cccu-gui`, or in `PATH`) with your settings, so both
   versions behave identically and write the same logs.
@@ -206,18 +212,19 @@ bar follows the steps, and the log shows the installer output live (errors red, 
 ## Live ISOs and several containers
 
 **Create ISO** (menu 4, GUI tab *Create ISO*) turns the system inside a container into a bootable live ISO. The
-[claudebackup-linux](claudebackup-linux-main) engine is **compiled into CCCU** (it is built as `cccu-iso-engine` and
-carried inside the `cccu` binary, together with the Calamares files): there are no sources to copy and nothing is
-compiled in the container. `cccu iso` pushes the engine into the container and runs it **there**, so the ISO is
+claudebackup remaster engine is **part of CCCU's own code** (`src/remaster`; it is built as `cccu-iso-engine` and
+carried inside the `cccu` binary, together with the Calamares files and the boot files): there are no sources to copy
+and nothing is compiled in the container. `cccu iso` pushes the engine into the container and runs it **there**, so the ISO is
 made with the container's own kernel, package manager and tools: Arch, Debian, Fedora and openSUSE families (the
 ones CCCU can clone). CCCU installs the ISO tools (xorriso, squashfs, bootloaders, Calamares) and, when the clone
-has none, a kernel inside the container first, then connects a host folder to receive the finished file. The
+has none, a kernel inside the container first; the finished ISO is copied out to your folder. Progress of the
+squashfs / erofs step is shown live like every other step (a percentage in the window, the live line on the console). The
 engine is linked statically, so it starts in any container; on Fedora/openSUSE building it needs `glibc-static`
 (`glibc-devel-static`).
 
 ```bash
 sudo cccu iso --name desktop --iso-out ~/isos --iso-level 6 --iso-format squashfs
-sudo cccu iso --name desktop --iso-out ~/isos --on-reboot      # set up now, build on the next boot (default in the GUI)
+sudo cccu iso --name desktop --iso-out ~/isos --on-reboot      # set up now, build on the next boot (the only way the GUI builds)
 sudo cccu iso --name desktop --iso-out ~/isos --on-console     # build now, progress on VT1 like the first-boot service
 sudo cccu iso-usb --iso-file ~/isos/claudebackup-arch-2026-10-30_1200.iso --drive /dev/sdX
 ```
@@ -243,6 +250,8 @@ Immutable containers cannot be duplicated yet.
 | 1. Install to a drive | Wipes a drive: GPT, EFI + system partition (ext4 or btrfs), GRUB, Incus, and creates the container on the first boot |
 | 2. Set up on this system | Installs what the host needs (Incus, `btrfs-progs`, SDDM, `cage`, GPU and audio packages) with the system's own package manager, creates the user and the container. Reboot afterwards: SDDM becomes the display manager |
 | 3. Export this machine | Writes the running system as a `.tar.zst` image to clone elsewhere |
+| 4. Create a live ISO | Builds a bootable live ISO of the container's system, inside the container (see above) |
+| 5. Containers | Lists the containers, duplicates one, switches the one the host session shows |
 
 Everything can also be given on the command line; `--yes` runs unattended without the menu. `cccu install ...`
 is menu 1, `cccu setup ...` is menu 2.
@@ -268,6 +277,9 @@ the tool asks on the terminal.
 | `--immutable` | mount the container's system read-only |
 | `--fs ext4\|btrfs` | host system filesystem |
 | `--keep-kernel` `--keep-caches` `--no-start` `--dry-run` `--yes` | see `cccu --help` |
+| `iso --iso-out <dir>` | build a live ISO (`--iso-name` `--iso-level` `--iso-format` `--iso-tag` `--no-ram` `--keep-pkg-cache` `--no-installer` `--installer-btrfs` `--on-console` `--on-reboot`) |
+| `iso-usb --iso-file <f> --drive <dev>` | write an ISO to a drive |
+| `containers` `duplicate <src> <new> [--switch]` `switch <name>` `start` `stop` | manage the containers |
 
 ## The tty host system
 
@@ -357,12 +369,13 @@ Every run writes a structured log to `/var/log/cccu/`:
 | `install.log` | the drive installation |
 | `container.log` | container creation (including the first-boot run) and diagnostics |
 | `export.log` | exports |
+| `iso.log` | ISO builds and writing an ISO to USB |
 
 One record per line - `date time LEVEL text`:
 
 ```
 ============================================================================
- CCCU v1.0 29-10-2026  -  Claudemods Container Creator Utility
+ CCCU v1.0 30-10-2026  -  Claudemods Container Creator Utility
  started : 2026-10-29 14:03:11.482
  host    : live
  command : cccu install --drive /dev/sda --image desktop.tar.zst --yes
@@ -393,7 +406,11 @@ grep ' #6 ' /var/log/cccu/install.log        # everything about command 6
 `src/`: `bootstrap` ISO extraction and the built-in base package lists, `main` command line and run control, `menu` main menu and settings screens, `util` terminal UI, progress
 and logging, `proc` command execution, `hostinstall` drive installation, `drive` partitioning, `installer`
 container pipeline and running-system setup, `distro` family detection and per-distro commands, `incus` Incus
-wrapper, `profiles` container profile, `sources` image/clone/export, `rootfs` system adaptation, `config` options.
+wrapper, `profiles` container profile, `sources` image/clone/export, `rootfs` system adaptation, `config` options,
+`iso` / `iso_embed` ISO creation inside a container, `containers` duplicate and switch.
+
+`src/remaster/`: the ISO engine (claudebackup remaster code) with its boot files and Calamares data; built as
+`cccu-iso-engine` and carried inside `cccu`.
 
 ## FAQ
 
