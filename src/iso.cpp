@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr const char* kOutDevice = "cccu-iso-out";        // Incus disk device: the host folder inside the container
-constexpr const char* kOutMount = "/mnt/cccu-iso-out";    // ... and where it appears (/mnt is left out of the ISO)
+constexpr const char* kOutDir = "/var/tmp/cccu-iso-work/out";   // where the engine writes the ISO inside the container
 constexpr const char* kWorkDir = "/var/tmp/cccu-iso-work"; // clone mount points and the ISO tree; removed afterwards
 constexpr const char* kEnginePath = "/usr/local/bin/cccu-iso-engine";   // the ISO engine, pushed in on every run
 constexpr const char* kProvisionDir = "/opt/cccu-iso";     // provisioning script + installer files, removed after use
@@ -157,7 +157,9 @@ Result create_iso(Options o) {
     info("ISO:     " + (fs::path(o.iso_out) / iso_name).string());
 
     // 3 -----------------------------------------------------------------------------------------
-    step("Connecting the output folder");
+    // The ISO is built inside the container and copied out at the end (incus file pull): hot-plugging a host folder
+    // into a running container is not reliable (the mount can fail), copying a file always works.
+    step("Preparing the output folder");
     if (!dry_run()) {
         fs::create_directories(o.iso_out, ec);
         if (ec) return fail("cannot create " + o.iso_out + ": " + ec.message());
@@ -166,13 +168,7 @@ Result create_iso(Options o) {
     cleanup.name = o.name;
     RunOptions quiet;
     quiet.quiet = true;
-    run({"incus", "config", "device", "remove", o.name, kOutDevice}, quiet);   // a leftover of an aborted run
-    if (!run({"incus", "config", "device", "add", o.name, kOutDevice, "disk", "source=" + fs::absolute(o.iso_out).string(),
-              std::string("path=") + kOutMount})
-             .ok()) {
-        return fail("could not connect " + o.iso_out + " to the container");
-    }
-    cleanup.device = true;
+    run({"incus", "config", "device", "remove", o.name, kOutDevice}, quiet);   // a leftover of an older version or aborted run
 
     // 4 -----------------------------------------------------------------------------------------
     step("Checking the kernel inside the container");
@@ -258,7 +254,7 @@ Result create_iso(Options o) {
     // 6 -----------------------------------------------------------------------------------------
     step("Building the ISO (this takes a while)");
     cleanup.work = true;
-    std::string build = std::string(kEnginePath) + " --yes --name '" + iso_name + "' --out " + kOutMount + " --work " + kWorkDir +
+    std::string build = std::string(kEnginePath) + " --yes --name '" + iso_name + "' --out " + kOutDir + " --work " + kWorkDir +
                         " --tree-dir " + kWorkDir + "/isotree --level " + std::to_string(o.iso_level) + " --format " + o.iso_format +
                         (o.iso_ram ? " --ram" : " --no-ram") + (o.iso_clean_cache ? " --clean-cache" : " --keep-cache");
     if (!o.iso_tag.empty()) build += " --tag '" + o.iso_tag + "'";
@@ -267,9 +263,16 @@ Result create_iso(Options o) {
     }
 
     // 7 -----------------------------------------------------------------------------------------
-    step("Checking the result");
+    step("Copying the ISO out of the container");
     const fs::path result = fs::path(o.iso_out) / iso_name;
     if (!dry_run()) {
+        const std::string inside = std::string(kOutDir) + "/" + iso_name;
+        if (!in_container(o.name, "test -s '" + inside + "'", quiet_query()).ok()) {
+            return fail("The build reported success but " + inside + " does not exist inside the container.");
+        }
+        if (!run({"incus", "file", "pull", o.name + inside, fs::absolute(o.iso_out).string() + "/"}).ok()) {
+            return fail("could not copy the ISO out of the container (is there room in " + o.iso_out + "?)");
+        }
         const auto size = fs::file_size(result, ec);
         if (ec || size == 0) return fail("The build reported success but " + result.string() + " does not exist.");
         run({"chown", "--reference=" + fs::absolute(o.iso_out).string(), result.string()}, quiet);
