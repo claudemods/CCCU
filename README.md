@@ -206,7 +206,7 @@ bar follows the steps, and the log shows the installer output live (errors red, 
 ## Live ISOs and several containers
 
 **Create ISO** (menu 4, GUI tab *Create ISO*) turns the system inside a container into a bootable live ISO. The
-[claudebackup-linux](claudebackup-linux-main) engine is copied into the container and runs **there**, so the ISO is
+[claudebackup-linux](https://github.com/claudemods/claudebackup-linux) engine is copied into the container and runs **there**, so the ISO is
 made with the container's own package manager and tools: Arch, Debian, Fedora and openSUSE families (the ones CCCU
 can clone). CCCU installs the ISO tools and, when the clone has none, a kernel inside the container first, then
 connects a host folder to receive the finished file.
