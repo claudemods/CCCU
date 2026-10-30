@@ -65,6 +65,7 @@ struct Options {
     bool iso_installer = true;             // Calamares on the ISO, to install it to a disk
     bool iso_btrfs = false;                // that installer defaults to btrfs zstd:22
     bool on_console = false;               // run on VT1 like the first-boot service shows its progress
+    bool on_reboot = false;                // set it up now, build on the next boot (first-boot style, on VT1)
     std::string iso_file;                  // iso-usb: the ISO to write
     std::string target;                    // duplicate: name of the new container
     bool switch_now = false;               // duplicate: make the copy the active container

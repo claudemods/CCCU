@@ -57,7 +57,9 @@ iso options
   --keep-pkg-cache          leave package caches in the image
   --no-installer            do not put the Calamares installer on the ISO
   --installer-btrfs         that installer defaults to btrfs zstd:22
-  --on-console              run on VT1 like the first-boot service, with its progress display
+  --on-console              run now on VT1 like the first-boot service, with its progress display
+  --on-reboot               set it up now and build on the NEXT BOOT (first-boot style, on VT1), then the
+                            login screen appears; reboot yourself afterwards
 
 install options
   --drive <dev>             drive to wipe, e.g. /dev/sda or /dev/nvme0n1
@@ -246,6 +248,8 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
             o.iso_btrfs = true;
         } else if (a == "--on-console") {
             o.on_console = true;
+        } else if (a == "--on-reboot") {
+            o.on_reboot = true;
         } else if (a == "--iso-file") {
             if (!value(o.iso_file)) return 2;
         } else if (a == "--switch") {
@@ -277,6 +281,24 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
         const auto listed = list_containers(true);
         if (!listed) {
             error(listed.error());
+            return 1;
+        }
+        return 0;
+    }
+    if (command == "iso" && o.on_reboot) {
+        std::vector<std::string> rest;
+        for (const auto& a : original_args) {
+            if (a != "--on-reboot" && a != "--on-console" && a != "--dry-run") rest.push_back(a);
+        }
+        if (o.iso_out.empty()) o.iso_out = std::filesystem::current_path().string();
+        if (std::find(rest.begin(), rest.end(), "--iso-out") == rest.end()) {
+            rest.push_back("--iso-out");
+            rest.push_back(o.iso_out);
+        }
+        set_total_steps(1);
+        const auto scheduled = schedule_iso_for_boot(o, rest);
+        if (!scheduled) {
+            error(scheduled.error());
             return 1;
         }
         return 0;

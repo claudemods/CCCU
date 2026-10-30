@@ -478,9 +478,13 @@ QWidget* MainWindow::buildIsoPage() {
     isoCache_->setChecked(true);
     addRow(Iso, "Clean caches", isoCache_, {isoCache_}, false, [this] { return isoCache_->isChecked(); });
 
-    isoConsole_ = new QCheckBox("Show progress on the console (VT1)");
-    isoConsole_->setToolTip("Runs as a system service on the real console, like the first-boot installer");
-    addRow(Iso, "Run on console", isoConsole_, {isoConsole_}, false, [this] { return isoConsole_->isChecked(); });
+    isoWhen_ = new QComboBox;
+    isoWhen_->addItem("After a reboot, on the console", "reboot");
+    isoWhen_->addItem("Now, on the console (VT1)", "console");
+    isoWhen_->addItem("Now, here in the window", "now");
+    isoWhen_->setToolTip("After a reboot works like the installer's first boot: the system comes up, the ISO is built on the\n"
+                         "console with the progress display, then the login screen appears.");
+    addRow(Iso, "When to build", isoWhen_, {isoWhen_}, true, [] { return true; });
 
     // ---- write to USB ----
     auto* usb = new QFrame;
@@ -791,7 +795,9 @@ QStringList MainWindow::buildArgs(Mode mode) const {
         const QString installer = isoInstaller_->currentData().toString();
         if (installer == "none") args << "--no-installer";
         else if (installer == "btrfs") args << "--installer-btrfs";
-        if (isoConsole_->isChecked()) args << "--on-console";
+        const QString when = isoWhen_->currentData().toString();
+        if (when == "reboot") args << "--on-reboot";
+        else if (when == "console") args << "--on-console";
     } else {
         const Common& c = common_[mode];
         const QString user = c.user->text().trimmed();
@@ -863,6 +869,7 @@ void MainWindow::runCli(const QStringList& args, Mode mode, const QString& title
     stepLabel_->setText(title);
     runningMode_ = mode;
     consoleRun_ = args.contains("--on-console");
+    rebootRun_ = args.contains("--on-reboot");
 
     process_ = new QProcess(this);
     process_->setProcessEnvironment(env);
@@ -980,7 +987,14 @@ void MainWindow::finished(int code, QProcess::ExitStatus status) {
                                  "Reboot into the new system. On that first boot CCCU creates the desktop container and shows live progress on the screen.");
     }
     if (success && runningMode_ == Iso && !dryRun_->isChecked()) {
-        if (consoleRun_) {
+        if (rebootRun_) {
+            result_->setText("ISO build set up - it runs on the next boot.");
+            const auto answer = QMessageBox::question(
+                this, "Reboot to build the ISO",
+                "The ISO build is set up. After the reboot it runs on the console (VT1) with the progress display, "
+                "then the login screen appears.\n\nSave your work. Reboot now?");
+            if (answer == QMessageBox::Yes) QProcess::startDetached("systemctl", {"reboot"});
+        } else if (consoleRun_) {
             QMessageBox::information(this, "ISO build started",
                                      "The build runs on the console (VT1, Ctrl+Alt+F1) like the first-boot installer.\n"
                                      "Follow it there or with: journalctl -u cccu-iso -f");

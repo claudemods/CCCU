@@ -275,6 +275,90 @@ Result start_on_console(const std::vector<std::string>& args) {
     return {};
 }
 
+Result schedule_iso_for_boot(const Options& o, const std::vector<std::string>& args) {
+    if (!is_root()) return fail("This must run as root.");
+    const std::string name = o.name.empty() ? "desktop" : o.name;
+    if (!valid_instance_name(name)) return fail("Invalid container name '" + name + "'.");
+    if (o.iso_out.empty()) return fail("No output folder: give --iso-out <folder>.");
+    std::error_code ec;
+    if (find_engine_source().empty()) return fail("The ISO engine (claudebackup-linux sources) was not found next to cccu.");
+    const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+    if (ec) return fail("could not find this program: " + ec.message());
+    if (!dry_run()) {
+        if (!incus::daemon_ready()) return fail("Incus is not answering (systemctl status incus).");
+        if (!incus::exists(name)) return fail("There is no container named '" + name + "'. See: cccu containers");
+        fs::create_directories(o.iso_out, ec);
+        if (ec) return fail("cannot create " + o.iso_out + ": " + ec.message());
+    }
+
+    const auto quote = [](const std::string& s) {
+        std::string out = "'";
+        for (char c : s) out += (c == '\'') ? std::string("'\\''") : std::string(1, c);
+        return out + "'";
+    };
+    // systemd expands $VAR and %specifiers in ExecStart: double them so the shell sees them untouched.
+    const auto unit_escape = [](const std::string& s) {
+        std::string out;
+        for (char c : s) out += (c == '$') ? std::string("$$") : (c == '%') ? std::string("%%") : std::string(1, c);
+        return out;
+    };
+    std::string command = quote(exe.string());
+    for (const auto& a : args) command += " " + quote(a);
+    if (std::find(args.begin(), args.end(), "--yes") == args.end()) command += " --yes";
+    // A failed build must not trap the next boots: the service always removes itself, and the error stays readable.
+    const std::string wrapper = command + "; rc=$?; if [ $rc -ne 0 ]; then echo; echo \"The ISO build failed (exit $rc). "
+                                          "Log: /var/log/cccu/iso.log - continuing in 30 s.\"; sleep 30; fi; exit $rc";
+
+    // The login screen waits for the build, like it waits for the first-boot service.
+    std::string dm = "sddm.service";
+    const fs::path link = fs::read_symlink("/etc/systemd/system/display-manager.service", ec);
+    if (!ec && !link.filename().empty()) dm = link.filename().string();
+    const std::string dropin_dir = "/etc/systemd/system/" + dm + ".d";
+    const std::string dropin = dropin_dir + "/10-cccu-iso.conf";
+
+    const std::string unit =
+        "[Unit]\n"
+        "Description=CCCU: build a live ISO (set up before the reboot)\n"
+        "Wants=network-online.target incus.service\n"
+        "After=network-online.target incus.service incus.socket getty@tty1.service\n"
+        "Conflicts=getty@tty1.service\n"
+        "ConditionPathExists=/var/lib/cccu/iso-pending\n\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "TimeoutStartSec=infinity\n"
+        "StandardInput=tty\n"
+        "StandardOutput=tty\n"
+        "StandardError=tty\n"
+        "TTYPath=/dev/tty1\n"
+        "TTYReset=yes\n"
+        "TTYVHangup=yes\n"
+        "Environment=TERM=linux\n"
+        "ExecStartPre=-/usr/bin/kill -s RTMIN+21 1\n"
+        "ExecStart=/bin/sh -c " + quote(unit_escape(wrapper)) + "\n"
+        "ExecStopPost=/usr/bin/rm -f /var/lib/cccu/iso-pending " + dropin + "\n"
+        "ExecStopPost=/usr/bin/systemctl disable cccu-iso-boot.service\n"
+        "ExecStopPost=-/usr/bin/kill -s RTMIN+20 1\n"
+        "ExecStopPost=-/usr/bin/systemctl --no-block start getty@tty1.service\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n";
+
+    step("Setting up the ISO build for the next boot");
+    if (dry_run()) {
+        info("(dry run) would write cccu-iso-boot.service running: " + command);
+        return {};
+    }
+    fs::create_directories("/var/lib/cccu", ec);
+    fs::create_directories(dropin_dir, ec);
+    if (auto r = write_text("/var/lib/cccu/iso-pending", "pending\n"); !r) return r;
+    if (auto r = write_text(dropin, "[Unit]\nAfter=cccu-iso-boot.service\n"); !r) return r;
+    if (auto r = write_text("/etc/systemd/system/cccu-iso-boot.service", unit); !r) return r;
+    run({"systemctl", "daemon-reload"});
+    if (!run({"systemctl", "enable", "cccu-iso-boot.service"}).ok()) return fail("could not enable cccu-iso-boot.service");
+    ok("Ready. Reboot: the ISO is built on the console (VT1) with the progress display, then the login screen appears.");
+    info("To cancel before rebooting:  systemctl disable cccu-iso-boot.service");
+    return {};
+}
+
 Result write_iso_to_usb(const Options& o, const std::string& drive) {
     if (!is_root()) return fail("This must run as root.");
     std::error_code ec;

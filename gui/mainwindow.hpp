@@ -107,7 +107,7 @@ private:
     QComboBox* isoInstaller_ = nullptr;
     QCheckBox* isoRam_ = nullptr;
     QCheckBox* isoCache_ = nullptr;
-    QCheckBox* isoConsole_ = nullptr;
+    QComboBox* isoWhen_ = nullptr;
     QLineEdit* usbIso_ = nullptr;
     QComboBox* usbDrive_ = nullptr;
     // Containers
@@ -134,4 +134,5 @@ private:
     Mode runningMode_ = Install;
     QString savedIso_;       // "ISO saved: <path>" seen in the output
     bool consoleRun_ = false;
+    bool rebootRun_ = false;
 };

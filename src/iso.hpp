@@ -18,6 +18,11 @@ Result create_iso(Options options);
 // --on-console.
 Result start_on_console(const std::vector<std::string>& args);
 
+// Sets the build up and leaves it for the next boot, the way `cccu install` leaves the container for the first
+// boot: a one-shot service (cccu-iso-boot) runs `cccu iso` on VT1 with the progress display, the login screen
+// waits until it is done, then it removes itself. `args` is the command line without --on-reboot.
+Result schedule_iso_for_boot(const Options& options, const std::vector<std::string>& args);
+
 // Writes an ISO to a whole drive (dd). Refuses a drive the running system lives on.
 Result write_iso_to_usb(const Options& options, const std::string& drive);
 
