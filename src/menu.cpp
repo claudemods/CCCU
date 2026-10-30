@@ -1,6 +1,7 @@
 #include "menu.hpp"
 
 #include "bootstrap.hpp"
+#include "containers.hpp"
 #include "proc.hpp"
 #include "sources.hpp"
 #include "util.hpp"
@@ -250,6 +251,36 @@ std::vector<Row> rows_for(Mode mode, Options& o, Flags& flags, std::string& noti
     const auto effective_container_user = [&o] { return o.container_user.empty() ? o.user : o.container_user; };
     std::vector<Row> rows;
 
+    if (mode == Mode::Iso) {
+        rows.push_back({"Container to build from", o.name, true, [&o] { edit_name(o); }});
+        rows.push_back({"ISO folder (on this host)", o.iso_out, true, [&o] { o.iso_out = ask("Folder that receives the ISO", o.iso_out); }});
+        rows.push_back({"ISO name", o.iso_name.empty() ? std::string("automatic") : o.iso_name, true, [&o] {
+            o.iso_name = ask("ISO file name (empty = automatic)", o.iso_name);
+        }});
+        rows.push_back({"Image format", o.iso_format, true, [&o, &notice] {
+            const std::string answer = lower(ask("Image format (squashfs or erofs)", o.iso_format));
+            if (answer == "squashfs" || answer == "erofs") o.iso_format = answer;
+            else notice = "Choose squashfs or erofs.";
+        }});
+        rows.push_back({"zstd level (1-22)", std::to_string(o.iso_level), true, [&o, &notice] {
+            const int level = std::atoi(ask("zstd compression level, 1 (fast) to 22 (smallest)", std::to_string(o.iso_level)).c_str());
+            if (level >= 1 && level <= 22) o.iso_level = level;
+            else notice = "A level from 1 to 22.";
+        }});
+        rows.push_back({"ISO tag (Arch label)", o.iso_tag.empty() ? std::string("2026 (default)") : o.iso_tag, true, [&o] {
+            o.iso_tag = ask("Volume label (no spaces, empty = 2026)", o.iso_tag);
+        }});
+        rows.push_back({"RAM boot entry", o.iso_ram ? "yes" : "no", true, [&o] { o.iso_ram = confirm("Add a copy-to-RAM boot entry?", o.iso_ram); }});
+        rows.push_back({"Leave package caches out", o.iso_clean_cache ? "yes" : "no", true, [&o] {
+            o.iso_clean_cache = confirm("Leave package caches out of the image?", o.iso_clean_cache);
+        }});
+        rows.push_back({"Installer on the ISO", o.iso_installer ? (o.iso_btrfs ? "Calamares, btrfs zstd:22" : "Calamares, ext4") : "none", true, [&o] {
+            o.iso_installer = confirm("Put the Calamares installer on the ISO?", o.iso_installer);
+            if (o.iso_installer) o.iso_btrfs = confirm("Should it default to btrfs with zstd:22 (no = ext4)?", o.iso_btrfs);
+        }});
+        return rows;
+    }
+
     if (mode == Mode::Export) {
         rows.push_back({"Output file", o.export_path, true, [&o] { o.export_path = ask("Output file (.tar .tar.zst .tar.xz .tar.gz)", o.export_path); }});
         return rows;
@@ -321,6 +352,7 @@ const char* mode_title(Mode mode) {
         case Mode::Install: return "INSTALL TO A DRIVE  -  wipes the drive: EFI boot + tty host + desktop container";
         case Mode::Running: return "SET UP ON THIS SYSTEM  -  installs what the host needs, then the container";
         case Mode::Export: return "EXPORT THIS MACHINE  -  write it as a desktop image";
+        case Mode::Iso: return "CREATE A LIVE ISO  -  built inside the container from its system";
     }
     return "";
 }
@@ -351,6 +383,53 @@ void render(Mode mode, const std::vector<Row>& rows, const std::string& notice) 
     box_bottom();
     if (!notice.empty()) std::cout << '\n' << paint(color::red, "  ! " + notice) << '\n';
     std::cout << std::endl;
+}
+
+// Menu 5: the containers, with duplicate and switch. Back to the main menu with Q.
+void containers_screen(std::string& notice) {
+    for (;;) {
+        clear_screen();
+        print_banner();
+        box_top("CONTAINERS");
+        const std::string active = active_container();
+        RunOptions listing;
+        listing.mutating = false;
+        listing.capture = true;
+        listing.quiet = true;
+        std::size_t count = 0;
+        for (const auto& line : split_lines(run({"incus", "list", "--format", "csv", "-c", "ns"}, listing).out)) {
+            const auto comma = line.find(',');
+            if (comma == std::string::npos) continue;
+            const std::string name = trim(line.substr(0, comma));
+            box_line(" " + paint(color::white, fit(name, 24)) + " " + fit(trim(line.substr(comma + 1)), 12) + " " +
+                     (name == active ? paint(color::badge_ok, " ACTIVE ") : std::string()));
+            ++count;
+        }
+        if (count == 0) box_line(" " + paint(color::grey, "no containers yet"));
+        box_rule();
+        box_line(" " + paint(color::grey, "D = duplicate   S = switch to a container   Q = back"));
+        box_bottom();
+        if (!notice.empty()) std::cout << '\n' << paint(color::red, "  ! " + notice) << '\n';
+        std::cout << std::endl;
+        notice.clear();
+
+        const std::string choice = lower(ask("Choose (D, S, Q)"));
+        if (input_closed() || choice == "q" || choice.empty()) return;
+        Options o;
+        if (choice == "d") {
+            o.name = ask("Container to duplicate");
+            o.target = ask("Name of the copy");
+            o.switch_now = confirm("Switch to the copy afterwards?", false);
+            if (const auto r = duplicate_container(o); !r) notice = r.error();
+        } else if (choice == "s") {
+            o.name = ask("Container to switch to");
+            if (const auto r = switch_container(o); !r) notice = r.error();
+        } else {
+            notice = "Type D, S or Q.";
+            continue;
+        }
+        ask("Press Enter to continue");
+    }
 }
 
 }  // namespace
@@ -398,18 +477,27 @@ std::optional<Mode> choose_mode() {
         box_line("");
         item("3", "Export this machine", "write a desktop image (.tar.zst)");
         box_line("");
+        item("4", "Create a live ISO", "of the container's system, built inside it");
+        box_line("");
+        item("5", "Containers", "list, duplicate, switch the active one");
+        box_line("");
         box_line("  " + paint(color::badge_bad, " Q ") + "  " + paint(color::white, "Quit"));
         box_line("");
         box_bottom();
         if (!notice.empty()) std::cout << '\n' << paint(color::red, "  ! " + notice) << '\n';
         std::cout << std::endl;
 
-        const std::string choice = lower(ask("Choose (1-3, Q)"));
+        const std::string choice = lower(ask("Choose (1-5, Q)"));
         if (input_closed() || choice == "q" || choice == "quit") return std::nullopt;
         if (choice == "1") return Mode::Install;
         if (choice == "2") return Mode::Running;
         if (choice == "3") return Mode::Export;
-        notice = "Invalid choice: type 1, 2, 3 or Q.";
+        if (choice == "4") return Mode::Iso;
+        if (choice == "5") {
+            containers_screen(notice);
+            continue;
+        }
+        notice = "Invalid choice: type 1 to 5 or Q.";
     }
 }
 
@@ -417,6 +505,7 @@ bool settings(Mode mode, Options& o, Flags& flags) {
     // Sensible defaults, so only the real decisions are red.
     if (o.name.empty()) o.name = "desktop";
     if (mode == Mode::Export && o.export_path.empty()) o.export_path = "desktop.tar.zst";
+    if (mode == Mode::Iso && o.iso_out.empty()) o.iso_out = fs::current_path().string();
     if (!flags.compress_given) {
         o.compression = "zstd:22";
         flags.compress_given = true;

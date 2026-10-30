@@ -21,6 +21,10 @@ struct Info {
 // Reads <root>/etc/os-release and checks for systemd (<root>/sbin/init).
 Info detect(const std::filesystem::path& root);
 
+// Same, from the text of an os-release file (a system that cannot be read from disk, such as a running
+// container) and whether it boots with systemd.
+Info detect_text(const std::string& os_release, bool systemd);
+
 const char* family_name(Family family);
 
 // The bases the installer is built for, one line each ("Arch family: Arch, CachyOS, ...").

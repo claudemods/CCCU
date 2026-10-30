@@ -6,7 +6,7 @@
 
 namespace cccu::menu {
 
-enum class Mode { Install, Running, Export };
+enum class Mode { Install, Running, Export, Iso };
 
 // Which answers were already given on the command line (so the menu does not override them).
 struct Flags {

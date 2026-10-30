@@ -53,6 +53,22 @@ struct Options {
     bool keep_caches = false;              // keep pacman package cache and ~/.cache
     bool start = true;
     bool assume_yes = false;
+
+    // ISO creation (cccu iso): a bootable live ISO of the container's system, built inside the container.
+    std::string iso_out;                   // host folder that receives the ISO (required)
+    std::string iso_name;                  // empty = automatic name
+    std::string iso_tag;                   // Arch volume label, empty = 2026
+    int iso_level = 3;                     // squashfs zstd level 1-22
+    std::string iso_format = "squashfs";   // squashfs | erofs
+    bool iso_ram = true;                   // adds a "copy to RAM" boot entry
+    bool iso_clean_cache = true;           // package caches stay out of the image
+    bool iso_installer = true;             // Calamares on the ISO, to install it to a disk
+    bool iso_btrfs = false;                // that installer defaults to btrfs zstd:22
+    bool on_console = false;               // run on VT1 like the first-boot service shows its progress
+    std::string iso_file;                  // iso-usb: the ISO to write
+    std::string target;                    // duplicate: name of the new container
+    bool switch_now = false;               // duplicate: make the copy the active container
+    bool keep_old = false;                 // switch: leave the previous container running
 };
 
 std::optional<DisplayManager> parse_dm(std::string_view text);

@@ -1,7 +1,9 @@
 #include "bootstrap.hpp"
 #include "config.hpp"
+#include "containers.hpp"
 #include "hostinstall.hpp"
 #include "installer.hpp"
+#include "iso.hpp"
 #include "menu.hpp"
 #include "proc.hpp"
 #include "sources.hpp"
@@ -20,7 +22,7 @@ using namespace cccu;
 namespace {
 
 void usage() {
-    std::cout << R"(CCCU - Claudemods Container Creator Unity
+    std::cout << R"(CCCU - Claudemods Container Creator Utility
 tty host + KDE desktop in an Incus system container
 
 Typical flow
@@ -36,6 +38,26 @@ Commands
   setup                     (menu 2) set up the container on THIS running system: installs Incus, SDDM, cage
                             and the other host packages with the system's own package manager first
   --export <file>           write this machine as a tar image (.tar .tar.zst .tar.xz .tar.gz), then stop
+  iso                       (menu 4) build a bootable live ISO of the container's system, INSIDE the container
+                            (Arch, Debian, Fedora, openSUSE families)
+  iso-usb                   write an ISO to a whole drive (--iso-file, --drive)
+  containers                list the containers and which one the host session shows
+  duplicate <src> <new>     copy a container (--switch makes the copy the active one)
+  switch <name>             show this container in the host session (stops the previous one)
+  start <name> | stop <name>
+
+iso options
+  --name <container>        the container to build from (default: desktop)
+  --iso-out <folder>        host folder that receives the ISO (default: the current folder)
+  --iso-name <file>         ISO file name (default: claudebackup-<distro>-<date>.iso)
+  --iso-level <1-22>        squashfs zstd level (default 3)
+  --iso-format squashfs|erofs
+  --iso-tag <label>         Arch volume label (default 2026)
+  --no-ram                  no "copy to RAM" boot entry
+  --keep-pkg-cache          leave package caches in the image
+  --no-installer            do not put the Calamares installer on the ISO
+  --installer-btrfs         that installer defaults to btrfs zstd:22
+  --on-console              run on VT1 like the first-boot service, with its progress display
 
 install options
   --drive <dev>             drive to wipe, e.g. /dev/sda or /dev/nvme0n1
@@ -79,7 +101,18 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
     bool running_mode = false;
     menu::Flags flags;
     std::vector<std::string> args = original_args;
-    if (!args.empty() && args.front() == "install") {
+    std::string command;      // iso, iso-usb, containers, duplicate, switch, start, stop
+    bool plain = false;
+    for (const char* name : {"iso", "iso-usb", "containers", "duplicate", "switch", "start", "stop"}) {
+        if (!args.empty() && args.front() == name) {
+            command = name;
+            args.erase(args.begin());
+            break;
+        }
+    }
+    if (!command.empty()) {
+        // fall through to the option loop below, no install/setup word
+    } else if (!args.empty() && args.front() == "install") {
         install_mode = true;
         args.erase(args.begin());
     } else if (!args.empty() && args.front() == "setup") {
@@ -192,11 +225,42 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
         } else if (a == "--exclude") {
             if (!value(v)) return 2;
             o.extra_excludes.push_back(v);
+        } else if (a == "--iso-out") {
+            if (!value(o.iso_out)) return 2;
+        } else if (a == "--iso-name") {
+            if (!value(o.iso_name)) return 2;
+        } else if (a == "--iso-tag") {
+            if (!value(o.iso_tag)) return 2;
+        } else if (a == "--iso-level") {
+            if (!value(v)) return 2;
+            o.iso_level = std::atoi(v.c_str());
+        } else if (a == "--iso-format") {
+            if (!value(o.iso_format)) return 2;
+        } else if (a == "--no-ram") {
+            o.iso_ram = false;
+        } else if (a == "--keep-pkg-cache") {
+            o.iso_clean_cache = false;
+        } else if (a == "--no-installer") {
+            o.iso_installer = false;
+        } else if (a == "--installer-btrfs") {
+            o.iso_btrfs = true;
+        } else if (a == "--on-console") {
+            o.on_console = true;
+        } else if (a == "--iso-file") {
+            if (!value(o.iso_file)) return 2;
+        } else if (a == "--switch") {
+            o.switch_now = true;
+        } else if (a == "--keep-old") {
+            o.keep_old = true;
+        } else if (a == "--plain") {
+            plain = true;
         } else if (a.size() > 1 && a.front() == '-') {
             error("Unknown option: " + a);
             return 2;
         } else if (o.name.empty()) {
             o.name = a;
+        } else if (command == "duplicate" && o.target.empty()) {
+            o.target = a;
         } else {
             error("Unexpected argument: " + a);
             return 2;
@@ -208,6 +272,28 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
         return 1;
     }
 
+    // Container commands and the ISO builder: no menu. --plain output is for the GUI, so no banner either.
+    if (command == "containers" && plain) {
+        const auto listed = list_containers(true);
+        if (!listed) {
+            error(listed.error());
+            return 1;
+        }
+        return 0;
+    }
+    if (command == "iso" && o.on_console && !dry_run()) {
+        std::vector<std::string> rest;
+        for (const auto& a : original_args) {
+            if (a != "--on-console") rest.push_back(a);
+        }
+        const auto started = start_on_console(rest);
+        if (!started) {
+            error(started.error());
+            return 1;
+        }
+        return 0;
+    }
+
     // No arguments = the main menu; "install" = straight to its settings screen. Either way every
     // setting is shown with a red NOT SET / green SET box. --yes = unattended (the first-boot
     // service runs like this): no menu, no questions.
@@ -217,8 +303,9 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
         if (!mode) return 0;
         install_mode = (*mode == menu::Mode::Install);
         running_mode = (*mode == menu::Mode::Running);
+        if (*mode == menu::Mode::Iso) command = "iso";
         if (!menu::settings(*mode, o, flags)) return 0;
-        if (*mode == menu::Mode::Export) o.assume_yes = true;   // nothing else to confirm
+        if (*mode == menu::Mode::Export || *mode == menu::Mode::Iso) o.assume_yes = true;   // nothing else to confirm
     } else if (menu_flow) {
         if (!menu::settings(install_mode ? menu::Mode::Install : menu::Mode::Running, o, flags)) return 0;
     }
@@ -234,6 +321,7 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
     if (!dry_run()) {
         const char* log_file = !o.export_path.empty() ? "/var/log/cccu/export.log"
                                : install_mode         ? "/var/log/cccu/install.log"
+                               : command == "iso" || command == "iso-usb" ? "/var/log/cccu/iso.log"
                                                       : "/var/log/cccu/container.log";
         log_open(log_file, command_line);
         if (!log_path().empty()) info(std::string("Log file: ") + log_file);
@@ -244,6 +332,20 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
         error(result.error());
         return 1;
     };
+
+    if (command == "iso") {
+        if (o.iso_out.empty()) o.iso_out = std::filesystem::current_path().string();
+        set_total_steps(7);
+        return finish(create_iso(o));
+    }
+    if (command == "iso-usb") {
+        set_total_steps(1);
+        return finish(write_iso_to_usb(o, o.drive));
+    }
+    if (command == "containers") return finish(list_containers(false));
+    if (command == "duplicate") return finish(duplicate_container(o));
+    if (command == "switch") return finish(switch_container(o));
+    if (command == "start" || command == "stop") return finish(set_container_running(o.name, command == "start"));
 
     if (!o.export_path.empty()) {
         set_total_steps(3);

@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
 
     QApplication app(argc, argv);
     QApplication::setApplicationName("CCCU");
-    QApplication::setApplicationDisplayName("CCCU - Claudemods Container Creator Unity");
+    QApplication::setApplicationDisplayName("CCCU - Claudemods Container Creator Utility");
     QApplication::setDesktopFileName("cccu");
     QApplication::setStyle(QStyleFactory::create("Fusion"));
 

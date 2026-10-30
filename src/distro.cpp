@@ -59,6 +59,10 @@ const char* family_name(Family family) {
 Info detect(const fs::path& root) {
     std::string text = read_text(root / "etc/os-release");
     if (text.empty()) text = read_text(root / "usr/lib/os-release");
+    return detect_text(text, uses_systemd(root));
+}
+
+Info detect_text(const std::string& text, bool systemd) {
     const auto os = parse_os_release(text);
     Info info;
     info.id = os.count("ID") ? os.at("ID") : "";
@@ -73,7 +77,7 @@ Info detect(const fs::path& root) {
     if (info.id == "void") { info.reason = "Void Linux uses runit instead of systemd"; return info; }
     if (info.id == "devuan") { info.reason = "Devuan removes systemd (sysvinit/OpenRC)"; return info; }
     if (info.id == "kde-linux" || info.id == "kdelinux") { info.reason = "KDE Linux is an immutable image: no package manager inside"; return info; }
-    if (!uses_systemd(root)) {
+    if (!systemd) {
         info.reason = info.name + " does not boot with systemd (Artix and MX Linux are often set up with OpenRC/sysvinit); the installer needs systemd";
         return info;
     }

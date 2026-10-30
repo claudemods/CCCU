@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CCCU - Claudemods Container Creator Unity: build script.
+# CCCU - Claudemods Container Creator Utility: build script.
 #
 # Installs the build and runtime dependencies for this machine (Arch, Debian/Ubuntu, Fedora and openSUSE
 # families), then builds the terminal tool (cccu) and the Qt6 desktop version (cccu-gui).

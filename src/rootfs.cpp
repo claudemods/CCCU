@@ -203,6 +203,11 @@ void write_session(const fs::path& root, const Options& o) {
 # cccu session: shows the KDE Plasma of the Incus container __CONTAINER__ in this host session.
 C=__CONTAINER__
 CU=__CUSER__          # the user inside the container (it can have a different name than the host account)
+# `cccu switch <name>` writes the container to show; without that file the ones above are used.
+if [ -r /etc/cccu/active ]; then
+    . /etc/cccu/active
+    C=${CCCU_CONTAINER:-$C}; CU=${CCCU_USER:-$CU}
+fi
 if [ "$1" != "--inner" ]; then
     n=0
     until incus info "$C" >/dev/null 2>&1; do      # first boot may still be creating it
@@ -234,11 +239,17 @@ exec incus exec "$C" -- su -l "$CU" -s /bin/sh -c 'R=${XDG_RUNTIME_DIR:-/run/use
                          fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
                              fs::perms::others_read | fs::perms::others_exec));
     log_write(write_text(root / "usr/share/wayland-sessions/cccu.desktop",
-                         "[Desktop Entry]\nName=Container Plasma\nComment=KDE Plasma from the Incus container '" + o.name +
-                             "'\nExec=/usr/local/bin/cccu-session\nType=Application\n"));
+                         "[Desktop Entry]\nName=Container Plasma\nComment=KDE Plasma from the active Incus container "
+                         "(cccu switch <name> changes it)\nExec=/usr/local/bin/cccu-session\nType=Application\n"));
 }
 
 }  // namespace
+
+Result refresh_session(const Options& options) {
+    if (dry_run()) return {};
+    write_session("/", options);
+    return {};
+}
 
 std::string pick_display_manager(const fs::path& root, DisplayManager wanted) {
     switch (wanted) {

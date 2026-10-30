@@ -201,7 +201,7 @@ void log_open(const std::filesystem::path& file, std::string_view command_line) 
     const char* user = std::getenv("SUDO_USER");
     const std::string rule(78, '=');
     log_write("\n" + rule + "\n");
-    log_write(" CCCU v" CCCU_VERSION " " CCCU_DATE "  -  Claudemods Container Creator Unity\n");
+    log_write(" CCCU v" CCCU_VERSION " " CCCU_DATE "  -  Claudemods Container Creator Utility\n");
     log_write(" started : " + timestamp() + "\n");
     log_write(" host    : " + std::string(host) + "\n");
     log_write(" user    : " + std::string(user ? user : "root") + "\n");
@@ -357,7 +357,7 @@ void print_banner() {
 ░╚════╝░╚══════╝╚═╝░░╚═╝░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░)BANNER";
     if (color_enabled()) std::cout << color::reset;
     std::cout << '\n'
-              << paint(color::white, std::string("CCCU  -  Claudemods Container Creator Unity  v") + CCCU_VERSION + " " + CCCU_DATE) << '\n'
+              << paint(color::white, std::string("CCCU  -  Claudemods Container Creator Utility  v") + CCCU_VERSION + " " + CCCU_DATE) << '\n'
               << paint(color::grey, "Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!")
               << '\n'
               << std::endl;

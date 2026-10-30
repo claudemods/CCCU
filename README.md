@@ -203,6 +203,34 @@ bar follows the steps, and the log shows the installer output live (errors red, 
   appear on a command line or in the log.
 * **Dry run** shows what would happen without changing anything. **Cancel** stops the running operation.
 
+## Live ISOs and several containers
+
+**Create ISO** (menu 4, GUI tab *Create ISO*) turns the system inside a container into a bootable live ISO. The
+[claudebackup-linux](claudebackup-linux-main) engine is copied into the container and runs **there**, so the ISO is
+made with the container's own package manager and tools: Arch, Debian, Fedora and openSUSE families (the ones CCCU
+can clone). CCCU installs the ISO tools and, when the clone has none, a kernel inside the container first, then
+connects a host folder to receive the finished file.
+
+```bash
+sudo cccu iso --name desktop --iso-out ~/isos --iso-level 6 --iso-format squashfs
+sudo cccu iso --name desktop --iso-out ~/isos --on-console     # progress on VT1, like the first-boot service
+sudo cccu iso-usb --iso-file ~/isos/claudebackup-arch-2026-10-30_1200.iso --drive /dev/sdX
+```
+
+Settings: ISO name and tag, image format (squashfs / erofs), zstd level, RAM boot entry, package-cache cleaning,
+Calamares installer (ext4 or btrfs zstd:22). The ISO needs free space inside the container of roughly twice its size.
+
+**Containers** (menu 5, GUI tab *Containers*): keep several containers and choose which one the host session shows.
+
+```bash
+sudo cccu containers
+sudo cccu duplicate desktop desktop-test --switch   # full copy (incus copy), then make it the active one
+sudo cccu switch desktop                            # "Container Plasma" now shows this one; the previous is stopped
+```
+
+The active container is recorded in `/etc/cccu/active`, which the host's `cccu-session` reads at login.
+Immutable containers cannot be duplicated yet.
+
 ## Usage
 
 | Menu entry | What it does |
@@ -329,7 +357,7 @@ One record per line - `date time LEVEL text`:
 
 ```
 ============================================================================
- CCCU v1.0 29-10-2026  -  Claudemods Container Creator Unity
+ CCCU v1.0 29-10-2026  -  Claudemods Container Creator Utility
  started : 2026-10-29 14:03:11.482
  host    : live
  command : cccu install --drive /dev/sda --image desktop.tar.zst --yes

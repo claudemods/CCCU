@@ -19,4 +19,8 @@ Result adapt(const std::filesystem::path& root, const Options& options);
 // `running` = the tree is the live system (/): its hostname, machine-id and network setup are left alone.
 Result adapt_host(const std::filesystem::path& root, const Options& options, bool running = false);
 
+// Rewrites the host's "Container Plasma" session script (/usr/local/bin/cccu-session) so a host installed
+// by an older CCCU also understands /etc/cccu/active (cccu switch).
+Result refresh_session(const Options& options);
+
 }  // namespace cccu::rootfs

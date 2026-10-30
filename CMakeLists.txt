@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 set(CCCU_RELEASE_DATE "29-10-2026")
-project(cccu VERSION 1.0 DESCRIPTION "Claudemods Container Creator Unity" LANGUAGES CXX)
+project(cccu VERSION 1.0 DESCRIPTION "Claudemods Container Creator Utility" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,12 +25,21 @@ add_executable(cccu
   src/sources.cpp
   src/rootfs.cpp
   src/installer.cpp
+  src/iso.cpp
+  src/containers.cpp
 )
 target_include_directories(cccu PRIVATE src)
 target_compile_definitions(cccu PRIVATE CCCU_VERSION="${PROJECT_VERSION}" CCCU_DATE="${CCCU_RELEASE_DATE}")
 target_compile_options(cccu PRIVATE -Wall -Wextra -Wpedantic)
 
 install(TARGETS cccu RUNTIME DESTINATION bin)
+
+# The ISO engine (claudebackup-linux sources): `cccu iso` copies it into the container and builds it THERE,
+# so the ISO tools and the engine match the container's own distribution.
+install(DIRECTORY claudebackup-linux-main/dev-release/
+        DESTINATION share/cccu/claudebackup
+        USE_SOURCE_PERMISSIONS
+        PATTERN "_" EXCLUDE)
 
 # Qt6 desktop version (cccu-gui): a front-end that runs the cccu command line tool.
 #   cmake -S . -B build -DCCCU_BUILD_GUI=ON && cmake --build build -j
