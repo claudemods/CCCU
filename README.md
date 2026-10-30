@@ -25,7 +25,7 @@
 
 </div>
 
-# CCCU - Claudemods Container Creator Unity
+# CCCU - Claudemods Container Creator Utility
 
 > *Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!*
 
