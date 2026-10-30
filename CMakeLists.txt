@@ -37,11 +37,11 @@ target_compile_options(cccu PRIVATE -Wall -Wextra -Wpedantic)
 # The claudebackup-linux engine is compiled here as cccu-iso-engine and then carried INSIDE the cccu binary
 # (src/iso_embed.cpp). `cccu iso` pushes it into the container and runs it there: nothing to copy, no sources,
 # no compiler in the container. Linked statically so it runs in any container whatever its C library.
-set(CBL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/claudebackup-linux-main/dev-release)
+set(CBL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/remaster)   # CCCU's own remaster code (ISO engine) and its data
 find_package(Threads REQUIRED)
 add_executable(cccu-iso-engine src/iso_engine.cpp)
 set_target_properties(cccu-iso-engine PROPERTIES CXX_STANDARD 17)   # the engine is C++17
-target_include_directories(cccu-iso-engine PRIVATE ${CBL_DIR}/src)
+target_include_directories(cccu-iso-engine PRIVATE ${CBL_DIR})
 target_compile_definitions(cccu-iso-engine PRIVATE CBL_ARCH_ZIP="${CBL_DIR}/resources/build-image-arch-img.zip")
 target_compile_options(cccu-iso-engine PRIVATE -w)
 target_link_libraries(cccu-iso-engine PRIVATE Threads::Threads)
@@ -56,10 +56,21 @@ else()
                   "dynamically and may not start in a container with an older C library.")
 endif()
 
+# BIOS/UEFI boot files for the non-Arch families: build.sh downloads them once into src/remaster/resources. Without
+# the file the build still works (an empty placeholder is embedded) and the container downloads them instead.
+set(CCCU_BOOTLOADERS_FILE ${CBL_DIR}/resources/bootloaders.tar.gz)
+if(NOT EXISTS ${CCCU_BOOTLOADERS_FILE})
+  message(WARNING "src/remaster/resources/bootloaders.tar.gz is missing: run build.sh (it downloads it) to carry the "
+                  "Debian/Fedora/openSUSE boot files inside cccu. Until then `cccu iso` downloads them in the container.")
+  set(CCCU_BOOTLOADERS_FILE ${CMAKE_BINARY_DIR}/no-bootloaders.bin)
+  file(WRITE ${CCCU_BOOTLOADERS_FILE} "")
+endif()
+
 add_dependencies(cccu cccu-iso-engine)
 target_compile_definitions(cccu PRIVATE
   CCCU_ENGINE_BIN="$<TARGET_FILE:cccu-iso-engine>"
-  CCCU_PROVISION_SH="${CBL_DIR}/build.sh"
+  CCCU_BOOTLOADERS_TGZ="${CCCU_BOOTLOADERS_FILE}"
+  CCCU_PROVISION_SH="${CBL_DIR}/provision.sh"
   CCCU_CALAMARES_ZIP="${CBL_DIR}/resources/calamares-files.zip"
   CCCU_CLAUDEMODS_ZIP="${CBL_DIR}/resources/claudemods.zip")
 

@@ -89,12 +89,12 @@ install_dependencies() {
     local pkgs=()
     case "$FAMILY" in
         arch)
-            pkgs=(base-devel cmake rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs)
+            pkgs=(base-devel cmake curl rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs)
             [ "$GUI" -eq 1 ] && pkgs+=(qt6-base polkit)
             $SUDO pacman -S --needed --noconfirm "${pkgs[@]}"
             ;;
         debian)
-            pkgs=(build-essential cmake rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs)
+            pkgs=(build-essential cmake curl rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs)
             [ "$GUI" -eq 1 ] && pkgs+=(qt6-base-dev pkexec)
             $SUDO apt-get update
             # "pkexec" is its own package on newer releases, part of "policykit-1" on older ones.
@@ -104,12 +104,12 @@ install_dependencies() {
             $SUDO apt-get install -y "${pkgs[@]}"
             ;;
         fedora)
-            pkgs=(gcc-c++ make cmake rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs glibc-static)
+            pkgs=(gcc-c++ make cmake curl rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs glibc-static)
             [ "$GUI" -eq 1 ] && pkgs+=(qt6-qtbase-devel polkit)
             $SUDO dnf install -y "${pkgs[@]}"
             ;;
         suse)
-            pkgs=(gcc-c++ make cmake rsync tar zstd squashfs parted dosfstools e2fsprogs btrfsprogs glibc-devel-static)
+            pkgs=(gcc-c++ make cmake curl rsync tar zstd squashfs parted dosfstools e2fsprogs btrfsprogs glibc-devel-static)
             [ "$GUI" -eq 1 ] && pkgs+=(qt6-base-devel polkit)
             $SUDO zypper --non-interactive install "${pkgs[@]}"
             ;;
@@ -161,6 +161,20 @@ info "Compiler: $CXX_FOUND ($("$CXX_FOUND" --version | head -n1))"
 info "CMake:    $(cmake --version | head -n1)"
 
 [ "$CLEAN" -eq 1 ] && { info "Removing ./$BUILD_DIR"; rm -rf "$BUILD_DIR"; }
+
+# The BIOS/UEFI boot files of the live ISO (Debian/Fedora/openSUSE) are carried inside cccu: fetch them once.
+BOOTLOADERS_URL="https://github.com/pieroproietti/penguins-bootloaders/releases/download/v26.1.16/bootloaders.tar.gz"
+BOOTLOADERS_FILE="src/remaster/resources/bootloaders.tar.gz"
+if [ ! -s "$BOOTLOADERS_FILE" ]; then
+    step "Fetching the ISO boot files"
+    if command -v curl >/dev/null 2>&1 && curl -fL --progress-bar --connect-timeout 20 --retry 3 "$BOOTLOADERS_URL" -o "$BOOTLOADERS_FILE.part"; then
+        mv "$BOOTLOADERS_FILE.part" "$BOOTLOADERS_FILE"
+        ok "Boot files saved in $BOOTLOADERS_FILE (they go into the cccu binary)."
+    else
+        rm -f "$BOOTLOADERS_FILE.part"
+        warn "Could not download the ISO boot files. cccu is built without them: 'cccu iso' then downloads them inside the container (Arch is not affected)."
+    fi
+fi
 
 step "Configuring"
 cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$CXX_FOUND" \
