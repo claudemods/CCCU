@@ -2,12 +2,14 @@
 
 #include "distro.hpp"
 #include "incus.hpp"
+#include "iso_embed.hpp"
 #include "proc.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 
 namespace cccu {
 namespace fs = std::filesystem;
@@ -17,7 +19,8 @@ namespace {
 constexpr const char* kOutDevice = "cccu-iso-out";        // Incus disk device: the host folder inside the container
 constexpr const char* kOutMount = "/mnt/cccu-iso-out";    // ... and where it appears (/mnt is left out of the ISO)
 constexpr const char* kWorkDir = "/var/tmp/cccu-iso-work"; // clone mount points and the ISO tree; removed afterwards
-constexpr const char* kEngineDir = "/opt/cccu-iso";        // the engine sources inside the container
+constexpr const char* kEnginePath = "/usr/local/bin/cccu-iso-engine";   // the ISO engine, pushed in on every run
+constexpr const char* kProvisionDir = "/opt/cccu-iso";     // provisioning script + installer files, removed after use
 constexpr const char* kStateDir = "/var/lib/cccu-iso";     // marker: tools for this setup are installed
 
 bool safe_word(const std::string& text) {
@@ -31,25 +34,11 @@ std::string lower(std::string text) {
     return text;
 }
 
-// The engine (claudebackup-linux sources). Installed next to cccu in share/cccu/claudebackup, or in the
-// source tree as claudebackup-linux-main/dev-release.
-fs::path find_engine_source() {
-    std::error_code ec;
-    const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
-    const fs::path dir = ec ? fs::path() : exe.parent_path();
-    std::vector<fs::path> candidates = {
-        dir / "../share/cccu/claudebackup",
-        "/usr/local/share/cccu/claudebackup",
-        "/usr/share/cccu/claudebackup",
-        dir / "../claudebackup-linux-main/dev-release",
-        dir / "claudebackup-linux-main/dev-release",
-    };
-    for (const auto& candidate : candidates) {
-        if (fs::is_regular_file(candidate / "build.sh", ec) && fs::is_regular_file(candidate / "src/main.cpp", ec)) {
-            return fs::weakly_canonical(candidate, ec);
-        }
-    }
-    return {};
+bool write_blob(const fs::path& path, const iso_embed::Blob& blob) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out.write(blob.begin, static_cast<std::streamsize>(blob.size()));
+    return static_cast<bool>(out);
 }
 
 // A shell script run inside the container.
@@ -134,10 +123,6 @@ Result create_iso(Options o) {
     if (!o.iso_tag.empty() && !safe_word(o.iso_tag)) return fail("The ISO tag may not contain spaces or quotes.");
 
     std::error_code ec;
-    const fs::path engine = find_engine_source();
-    if (engine.empty()) {
-        return fail("The ISO engine (claudebackup-linux sources) was not found next to cccu. Reinstall CCCU (bash build.sh --install).");
-    }
 
     // 1 -----------------------------------------------------------------------------------------
     step("Checking the container '" + o.name + "'");
@@ -204,31 +189,58 @@ Result create_iso(Options o) {
 
     // 5 -----------------------------------------------------------------------------------------
     step("Preparing the ISO tools in the container");
-    const std::string version = trim(read_text(engine / "version.txt"));
-    const std::string marker = std::string(kStateDir) + "/ready-" + (version.empty() ? "0" : version) + "-" + family + "-" +
-                               (o.iso_installer ? "c" : "n") + (o.iso_btrfs ? "b" : "e") + (o.iso_format == "erofs" ? "f" : "s");
-    const bool ready = !dry_run() && in_container(o.name, "test -e '" + marker + "' && command -v claudebackup-linux >/dev/null", quiet_query()).ok();
-    if (ready) {
-        info("Already installed in this container.");
-    } else {
-        const std::string dir = std::string(kEngineDir) + "/" + engine.filename().string();
-        in_container(o.name, std::string("rm -rf ") + kEngineDir + " && mkdir -p " + kEngineDir);
-        if (!run({"incus", "file", "push", "-r", engine.string(), o.name + kEngineDir + "/"}).ok()) {
+    // The engine is part of this program: it is written out and pushed into the container, nothing is compiled there.
+    const fs::path stage = "/var/tmp/cccu-iso-push";   // not /tmp: a snap-packaged incus cannot read it
+    struct StageGuard {
+        fs::path path;
+        ~StageGuard() {
+            std::error_code ignore;
+            fs::remove_all(path, ignore);
+        }
+    } stage_guard{stage};
+    if (!dry_run()) {
+        fs::remove_all(stage, ec);
+        fs::create_directories(stage / "resources", ec);
+        if (!write_blob(stage / "cccu-iso-engine", iso_embed::engine())) return fail("could not write the ISO engine to " + stage.string());
+        if (!run({"incus", "file", "push", "--mode", "0755", (stage / "cccu-iso-engine").string(), o.name + kEnginePath}).ok()) {
             return fail("could not copy the ISO engine into the container");
         }
-        // build.sh --root-phase is its non-interactive part: host tools, squashfs/erofs tools, the bootloaders and Calamares.
+    }
+
+    // The tools the engine runs (xorriso, mksquashfs, bootloaders, Calamares) come from the container's own package
+    // manager, through the provisioning part of claudebackup's build.sh (--root-phase). Done once per setup.
+    const std::string marker = std::string(kStateDir) + "/ready-" + CCCU_VERSION + "-" + family + "-" + (o.iso_installer ? "c" : "n") +
+                               (o.iso_btrfs ? "b" : "e") + (o.iso_format == "erofs" ? "f" : "s");
+    const bool ready = !dry_run() && in_container(o.name, "test -e '" + marker + "'", quiet_query()).ok();
+    if (ready) {
+        info("ISO tools are already installed in this container.");
+    } else {
+        if (!dry_run()) {
+            if (!write_blob(stage / "build.sh", iso_embed::provision())) return fail("could not write the provisioning script");
+            if (o.iso_installer) {
+                if (!write_blob(stage / "resources/calamares-files.zip", iso_embed::calamares()) ||
+                    !write_blob(stage / "resources/claudemods.zip", iso_embed::claudemods())) {
+                    return fail("could not write the installer files");
+                }
+            }
+            in_container(o.name, std::string("rm -rf ") + kProvisionDir + " && mkdir -p " + kProvisionDir + "/resources");
+            std::vector<std::string> push = {"incus", "file", "push", "-r", (stage / "build.sh").string(), o.name + kProvisionDir + "/"};
+            if (!run(push).ok()) return fail("could not copy the provisioning script into the container");
+            if (o.iso_installer && !run({"incus", "file", "push", "-r", (stage / "resources").string(), o.name + kProvisionDir + "/"}).ok()) {
+                return fail("could not copy the installer files into the container");
+            }
+        }
         const std::string script =
-            "set -e\ncd '" + dir + "'\nsh build.sh --root-phase " + family + " " + (o.iso_installer ? "1" : "0") + " " +
+            std::string("set -e\ncd ") + kProvisionDir + "\nsh build.sh --root-phase " + family + " " + (o.iso_installer ? "1" : "0") + " " +
             (o.iso_btrfs ? "1" : "0") + " " + (o.iso_format == "erofs" ? "1" : "0") + " 0\n"
-            "make -j\"$(nproc 2>/dev/null || echo 2)\"\nmake install\n"
-            "mkdir -p " + kStateDir + "\ntouch '" + marker + "'\n";
-        if (!in_container(o.name, script).ok()) return fail("installing the ISO tools in the container failed (see above)");
+            "mkdir -p " + kStateDir + "\ntouch '" + marker + "'\nrm -rf " + kProvisionDir + "\n";
+        if (!in_container(o.name, script, {}, {"CBL_NO_COMPILER=1"}).ok()) return fail("installing the ISO tools in the container failed (see above)");
     }
 
     // 6 -----------------------------------------------------------------------------------------
     step("Building the ISO (this takes a while)");
     cleanup.work = true;
-    std::string build = std::string("claudebackup-linux build --yes --name '") + iso_name + "' --out " + kOutMount + " --work " + kWorkDir +
+    std::string build = std::string(kEnginePath) + " --yes --name '" + iso_name + "' --out " + kOutMount + " --work " + kWorkDir +
                         " --tree-dir " + kWorkDir + "/isotree --level " + std::to_string(o.iso_level) + " --format " + o.iso_format +
                         (o.iso_ram ? " --ram" : " --no-ram") + (o.iso_clean_cache ? " --clean-cache" : " --keep-cache");
     if (!o.iso_tag.empty()) build += " --tag '" + o.iso_tag + "'";
@@ -281,7 +293,6 @@ Result schedule_iso_for_boot(const Options& o, const std::vector<std::string>& a
     if (!valid_instance_name(name)) return fail("Invalid container name '" + name + "'.");
     if (o.iso_out.empty()) return fail("No output folder: give --iso-out <folder>.");
     std::error_code ec;
-    if (find_engine_source().empty()) return fail("The ISO engine (claudebackup-linux sources) was not found next to cccu.");
     const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
     if (ec) return fail("could not find this program: " + ec.message());
     if (!dry_run()) {

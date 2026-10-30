@@ -206,10 +206,14 @@ bar follows the steps, and the log shows the installer output live (errors red, 
 ## Live ISOs and several containers
 
 **Create ISO** (menu 4, GUI tab *Create ISO*) turns the system inside a container into a bootable live ISO. The
-[claudebackup-linux](claudebackup-linux-main) engine is copied into the container and runs **there**, so the ISO is
-made with the container's own package manager and tools: Arch, Debian, Fedora and openSUSE families (the ones CCCU
-can clone). CCCU installs the ISO tools and, when the clone has none, a kernel inside the container first, then
-connects a host folder to receive the finished file.
+[claudebackup-linux](claudebackup-linux-main) engine is **compiled into CCCU** (it is built as `cccu-iso-engine` and
+carried inside the `cccu` binary, together with the Calamares files): there are no sources to copy and nothing is
+compiled in the container. `cccu iso` pushes the engine into the container and runs it **there**, so the ISO is
+made with the container's own kernel, package manager and tools: Arch, Debian, Fedora and openSUSE families (the
+ones CCCU can clone). CCCU installs the ISO tools (xorriso, squashfs, bootloaders, Calamares) and, when the clone
+has none, a kernel inside the container first, then connects a host folder to receive the finished file. The
+engine is linked statically, so it starts in any container; on Fedora/openSUSE building it needs `glibc-static`
+(`glibc-devel-static`).
 
 ```bash
 sudo cccu iso --name desktop --iso-out ~/isos --iso-level 6 --iso-format squashfs

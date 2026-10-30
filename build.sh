@@ -104,12 +104,12 @@ install_dependencies() {
             $SUDO apt-get install -y "${pkgs[@]}"
             ;;
         fedora)
-            pkgs=(gcc-c++ make cmake rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs)
+            pkgs=(gcc-c++ make cmake rsync tar zstd squashfs-tools parted dosfstools e2fsprogs btrfs-progs glibc-static)
             [ "$GUI" -eq 1 ] && pkgs+=(qt6-qtbase-devel polkit)
             $SUDO dnf install -y "${pkgs[@]}"
             ;;
         suse)
-            pkgs=(gcc-c++ make cmake rsync tar zstd squashfs parted dosfstools e2fsprogs btrfsprogs)
+            pkgs=(gcc-c++ make cmake rsync tar zstd squashfs parted dosfstools e2fsprogs btrfsprogs glibc-devel-static)
             [ "$GUI" -eq 1 ] && pkgs+=(qt6-base-devel polkit)
             $SUDO zypper --non-interactive install "${pkgs[@]}"
             ;;

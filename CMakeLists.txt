@@ -26,20 +26,44 @@ add_executable(cccu
   src/rootfs.cpp
   src/installer.cpp
   src/iso.cpp
+  src/iso_embed.cpp
   src/containers.cpp
 )
 target_include_directories(cccu PRIVATE src)
 target_compile_definitions(cccu PRIVATE CCCU_VERSION="${PROJECT_VERSION}" CCCU_DATE="${CCCU_RELEASE_DATE}")
 target_compile_options(cccu PRIVATE -Wall -Wextra -Wpedantic)
 
-install(TARGETS cccu RUNTIME DESTINATION bin)
+# ---- the ISO engine, built into CCCU ----------------------------------------------------------------------
+# The claudebackup-linux engine is compiled here as cccu-iso-engine and then carried INSIDE the cccu binary
+# (src/iso_embed.cpp). `cccu iso` pushes it into the container and runs it there: nothing to copy, no sources,
+# no compiler in the container. Linked statically so it runs in any container whatever its C library.
+set(CBL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/claudebackup-linux-main/dev-release)
+find_package(Threads REQUIRED)
+add_executable(cccu-iso-engine src/iso_engine.cpp)
+set_target_properties(cccu-iso-engine PROPERTIES CXX_STANDARD 17)   # the engine is C++17
+target_include_directories(cccu-iso-engine PRIVATE ${CBL_DIR}/src)
+target_compile_definitions(cccu-iso-engine PRIVATE CBL_ARCH_ZIP="${CBL_DIR}/resources/build-image-arch-img.zip")
+target_compile_options(cccu-iso-engine PRIVATE -w)
+target_link_libraries(cccu-iso-engine PRIVATE Threads::Threads)
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_LINK_OPTIONS -static)
+check_cxx_source_compiles("int main() { return 0; }" CCCU_CAN_LINK_STATIC)
+unset(CMAKE_REQUIRED_LINK_OPTIONS)
+if(CCCU_CAN_LINK_STATIC)
+  target_link_options(cccu-iso-engine PRIVATE -static)
+else()
+  message(WARNING "No static libc here (Fedora: glibc-static, openSUSE: glibc-devel-static): the ISO engine is linked "
+                  "dynamically and may not start in a container with an older C library.")
+endif()
 
-# The ISO engine (claudebackup-linux sources): `cccu iso` copies it into the container and builds it THERE,
-# so the ISO tools and the engine match the container's own distribution.
-install(DIRECTORY claudebackup-linux-main/dev-release/
-        DESTINATION share/cccu/claudebackup
-        USE_SOURCE_PERMISSIONS
-        PATTERN "_" EXCLUDE)
+add_dependencies(cccu cccu-iso-engine)
+target_compile_definitions(cccu PRIVATE
+  CCCU_ENGINE_BIN="$<TARGET_FILE:cccu-iso-engine>"
+  CCCU_PROVISION_SH="${CBL_DIR}/build.sh"
+  CCCU_CALAMARES_ZIP="${CBL_DIR}/resources/calamares-files.zip"
+  CCCU_CLAUDEMODS_ZIP="${CBL_DIR}/resources/claudemods.zip")
+
+install(TARGETS cccu RUNTIME DESTINATION bin)
 
 # Qt6 desktop version (cccu-gui): a front-end that runs the cccu command line tool.
 #   cmake -S . -B build -DCCCU_BUILD_GUI=ON && cmake --build build -j
