@@ -388,8 +388,6 @@ image, field-testing of the non-Arch paths, non-systemd inits.
 
 <div align="center">
 
-*Sailing The Seven Seas like Penguin's Eggs, Remastersys, Refracta, Systemback and father Knoppix!*
-
 **[ Support Me ](https://www.paypal.com/paypalme/claudemods?country.x=GB&locale)** · [claudemodsreloaded.co.uk](https://www.claudemodsreloaded.co.uk)
 
 </div>
