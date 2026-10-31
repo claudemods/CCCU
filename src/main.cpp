@@ -83,9 +83,12 @@ install options
 
 Container options
   --image <file>            desktop image;  --clone-host  clone the running machine instead
-  --display session|native  session (default): the HOST runs SDDM and offers a "Container Plasma" session
-                            that shows the container's desktop; native: the container runs its own
-                            display manager on VT1 and the host stays on text consoles
+  --display session|native|server
+                            session (default): the HOST runs SDDM and offers a "Container Plasma" session
+                            that shows the container's desktop (kiosk compositor cage); native: the container
+                            runs its own display manager on VT1 and the host stays on text consoles;
+                            server: like native, for a machine WITHOUT a usable GPU (a rented server whose only
+                            screen is the BMC / iKVM chip) - Plasma Wayland draws in software, no cage
   --user <name>             the account on the tty host (required): created if missing, added to incus-admin,
                             logged in automatically
   --container-user <name>   the user inside the cloned system whose desktop runs (default: same as --user)
@@ -191,7 +194,7 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
             if (!value(v)) return 2;
             const auto parsed = parse_display(v);
             if (!parsed) {
-                error("Bad --display: " + v + " (session or native)");
+                error("Bad --display: " + v + " (session, native or server)");
                 return 2;
             }
             o.display = *parsed;

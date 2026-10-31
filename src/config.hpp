@@ -12,7 +12,12 @@ enum class DisplayManager { Auto, Sddm, PlasmaLogin, None };
 //   Session - the HOST runs SDDM; the login screen offers "Container Plasma", a session that shows
 //             the container's Plasma nested in a kiosk compositor (default, most robust).
 //   Native  - the container runs its own display manager on a real VT (host stays on text consoles).
-enum class Display { Session, Native };
+// Server - like Native (no cage, no host login screen), but for a machine without a usable GPU, such as a rented server
+//          whose only screen is the BMC / iKVM chip: Plasma Wayland draws on the CPU (software rendering).
+enum class Display { Session, Native, Server };
+
+// True when the container owns the screen (Native, Server) instead of the host session showing it (Session).
+inline constexpr bool container_owns_screen(Display display) { return display != Display::Session; }
 
 // Direct = rsync straight into the instance's rootfs (dir/btrfs pools).
 // Import = stage, pack as an Incus image, `incus init` from it (any storage driver).

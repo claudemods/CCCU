@@ -376,6 +376,21 @@ std::vector<Row> rows_for(Mode mode, Options& o, Flags& flags, std::string& noti
         flags.compress_given = true;
     }});
     rows.push_back({"Immutable container", o.immutable ? "yes (read-only system)" : "no", true, [&o] { edit_immutable(o); }});
+    rows.push_back({"Display", o.display == Display::Server ? "server (no GPU, no cage)"
+                               : o.display == Display::Native ? "native (container on screen, GPU)"
+                                                              : "desktop session (host login + cage)",
+                    true, [&o] {
+        info("");
+        info("How does the container's desktop reach the screen?");
+        info("  1) Desktop session - the host shows a \"Container Plasma\" login through the cage compositor (needs a GPU)");
+        info("  2) Server - Plasma Wayland straight on the screen in software: for a machine WITHOUT a usable GPU");
+        info("     (a rented server whose only screen is the BMC / iKVM chip). No cage, no host login screen.");
+        info("  3) Native - the container's own login on the screen with the GPU (no cage)");
+        const std::string choice = ask("Choose (1-3)");
+        if (choice == "1") o.display = Display::Session;
+        else if (choice == "2") o.display = Display::Server;
+        else if (choice == "3") o.display = Display::Native;
+    }});
     return rows;
 }
 

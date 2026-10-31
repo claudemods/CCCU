@@ -75,10 +75,17 @@ std::string native_yaml() {
 
 }  // namespace
 
-const char* name(Display display) { return display == Display::Native ? "cccu-desktop" : "cccu-session"; }
+const char* name(Display display) {
+    switch (display) {
+        case Display::Native: return "cccu-desktop";
+        case Display::Server: return "cccu-server";
+        case Display::Session: break;
+    }
+    return "cccu-session";
+}
 
 Result install(Display display) {
-    return incus::ensure_profile(name(display), display == Display::Native ? native_yaml() : session_yaml());
+    return incus::ensure_profile(name(display), container_owns_screen(display) ? native_yaml() : session_yaml());
 }
 
 }  // namespace cccu::profiles

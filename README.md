@@ -250,6 +250,24 @@ sudo cccu switch desktop                            # "Container Plasma" now sho
 The active container is recorded in `/etc/cccu/active`, which the host's `cccu-session` reads at login.
 Immutable containers cannot be duplicated yet.
 
+## Display modes (the toggle)
+
+How the container's desktop reaches the screen is one choice, `--display` in the terminal tool and the *Display* row
+(a toggle) in the window and the menu:
+
+| Mode | What it does | For |
+|---|---|---|
+| `session` (default, as before) | the HOST runs SDDM; its "Container Plasma" session shows the container's desktop through the kiosk compositor cage | a normal machine with a GPU |
+| `server` | the container runs its own login on the screen (VT1) and Plasma Wayland draws in software (`KWIN_COMPOSE=Q`, `LIBGL_ALWAYS_SOFTWARE=1`); no cage, no host login screen, the host stays on text consoles | a machine WITHOUT a usable GPU, e.g. a rented server whose only screen is the BMC / iKVM chip |
+| `native` | like `server`, but with the GPU | a machine with a GPU that should not use cage |
+
+```bash
+sudo cccu setup --image desktop.tar.zst --user alice --size 60 --display server --yes
+```
+
+The mode is set when the container is created. In `server` and `native` mode switch the screen to the container with
+`chvt 1` (as root) or Ctrl+Alt+F1; the host keeps tty2. Server mode has not been tested on real hardware yet.
+
 ## Usage
 
 | Menu entry | What it does |

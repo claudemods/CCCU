@@ -192,7 +192,7 @@ Result stage_desktop(const Options& o) {
     command += " --display " + std::string(to_string(o.display));
     // Native mode: once the container runs, its display manager owns VT1, so the host's getty goes.
     const std::string mask_getty =
-        o.display == Display::Native ? "ExecStartPost=/usr/bin/systemctl mask --now getty@tty1.service\n" : "";
+        container_owns_screen(o.display) ? "ExecStartPost=/usr/bin/systemctl mask --now getty@tty1.service\n" : "";
 
     const std::string unit =
         "[Unit]\n"

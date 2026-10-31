@@ -461,6 +461,17 @@ void MainWindow::buildCommon(Mode mode) {
 
     c.immutable = new QCheckBox("Mount the system read-only");
     addRow(mode, "Immutable container", c.immutable, {c.immutable}, false, [i = c.immutable] { return i->isChecked(); });
+
+    // The toggle: how the container's desktop reaches the screen.
+    c.display = new QComboBox;
+    c.display->addItem("Desktop session (host login + cage) - needs a GPU", "session");
+    c.display->addItem("Server (no GPU, no cage): Plasma Wayland in software", "server");
+    c.display->addItem("Native (container on screen, with the GPU)", "native");
+    c.display->setToolTip("Desktop session: the host shows a \"Container Plasma\" login through the cage compositor.\n"
+                          "Server: for a machine without a usable GPU (a rented server whose only screen is the BMC / iKVM chip):\n"
+                          "Plasma Wayland draws on the CPU straight on the screen, no cage, no host login screen.\n"
+                          "Native: the container's own login on the screen, using the GPU.");
+    addRow(mode, "Display", c.display, {c.display}, true, [] { return true; });
 }
 
 // The ISO tab: exactly what the claudebackup ISO creator offers, plus writing the result to a USB stick.
@@ -879,6 +890,7 @@ QStringList MainWindow::buildArgs(Mode mode) const {
         args << "--user" << user << "--container-user" << containerUser << "--name" << c.name->text().trimmed() << "--size"
              << QString("%1GiB").arg(c.size->value()) << "--compress" << c.compress->currentText();
         if (c.immutable->isChecked()) args << "--immutable";
+        args << "--display" << c.display->currentData().toString();
     }
     if (dryRun_->isChecked()) args << "--dry-run";
     args << "--yes";

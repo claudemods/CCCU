@@ -303,7 +303,7 @@ Result create_container(Options o) {
 
     // Two systems cannot own the GPU/VT at once; never start into a running host desktop.
     // (Session mode is the opposite: the host desktop is how you reach the container.)
-    const bool host_desktop = o.display == Display::Native &&
+    const bool host_desktop = container_owns_screen(o.display) &&
                               query({"systemctl", "is-active", "display-manager.service"}) == "active";
     const bool started = o.start && !host_desktop;
     if (started) {

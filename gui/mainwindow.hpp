@@ -51,6 +51,7 @@ private:
         QSpinBox* size = nullptr;
         QComboBox* compress = nullptr;
         QCheckBox* immutable = nullptr;
+        QComboBox* display = nullptr;
     };
 
     QWidget* buildPage(Mode mode);

@@ -20,9 +20,17 @@ std::optional<Method> parse_method(std::string_view text) {
 std::optional<Display> parse_display(std::string_view text) {
     if (text == "session") return Display::Session;
     if (text == "native") return Display::Native;
+    if (text == "server") return Display::Server;
     return std::nullopt;
 }
 
-std::string_view to_string(Display display) { return display == Display::Native ? "native" : "session"; }
+std::string_view to_string(Display display) {
+    switch (display) {
+        case Display::Native: return "native";
+        case Display::Server: return "server";
+        case Display::Session: break;
+    }
+    return "session";
+}
 
 }  // namespace cccu
