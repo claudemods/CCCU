@@ -229,6 +229,13 @@ sudo cccu iso --name desktop --iso-out ~/isos --on-console     # build now, prog
 sudo cccu iso-usb --iso-file ~/isos/claudebackup-arch-2026-10-30_1200.iso --drive /dev/sdX
 ```
 
+The service shows the animated squashfs/erofs bar, then a green "Creating the ISO" bar for the ISO stage. When the
+ISO is saved, the PC reboots after a 5 second countdown (a failed build does not reboot: it shows the error, waits
+30 seconds and goes on to the login screen).
+
+The ISO is saved in `~/Downloads` unless you choose another folder: the window asks where to save it every time
+(starting in Downloads), the terminal menu and `--iso-out` default to it.
+
 Settings: ISO name and tag, image format (squashfs / erofs), zstd level, RAM boot entry, package-cache cleaning,
 Calamares installer (ext4 or btrfs zstd:22). The ISO needs free space inside the container of roughly twice its size.
 

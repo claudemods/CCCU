@@ -442,7 +442,7 @@ QWidget* MainWindow::buildIsoPage() {
     isoContainer_->setToolTip("The container whose system becomes the ISO");
     addRow(Iso, "Build from container", isoContainer_, {isoContainer_}, true, [this] { return validName(isoContainer_->currentText().trimmed()); });
 
-    isoOut_ = new QLineEdit(userHome());
+    isoOut_ = new QLineEdit(userHome() + "/Downloads");
     addRow(Iso, "ISO folder", fileRow(isoOut_, true, QString(), true), {isoOut_}, true, [this] { return !isoOut_->text().trimmed().isEmpty(); });
 
     isoName_ = new QLineEdit;
@@ -841,6 +841,12 @@ void MainWindow::start() {
             QMessageBox::warning(this, "Create ISO", "The ISO name and tag may only contain letters, digits, '.', '_' and '-'.");
             return;
         }
+        // Ask where the ISO goes, every time; it starts in Downloads (created if it does not exist yet).
+        QString start = absolutize(isoOut_->text());
+        if (start.isEmpty() || !QFileInfo(start).isDir()) start = QFileInfo(userHome() + "/Downloads").isDir() ? userHome() + "/Downloads" : userHome();
+        const QString chosen = QFileDialog::getExistingDirectory(this, "Where should the ISO be saved?", start);
+        if (chosen.isEmpty()) return;
+        isoOut_->setText(chosen);
     }
     runCli(buildArgs(mode), mode, "Starting ...");
 }

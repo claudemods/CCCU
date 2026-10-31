@@ -9,7 +9,11 @@
 #include <cctype>
 #include <ctime>
 #include <filesystem>
+#include <cstdlib>
 #include <fstream>
+
+#include <pwd.h>
+#include <unistd.h>
 
 namespace cccu {
 namespace fs = std::filesystem;
@@ -34,6 +38,23 @@ std::string lower(std::string text) {
     return text;
 }
 
+// Creates the output folder; one that did not exist (Downloads) belongs to the person whose folder it is, not root.
+bool ensure_folder(const std::string& folder, std::string& error) {
+    std::error_code ec;
+    const bool existed = fs::exists(folder, ec);
+    fs::create_directories(folder, ec);
+    if (ec) {
+        error = "cannot create " + folder + ": " + ec.message();
+        return false;
+    }
+    if (!existed) {
+        RunOptions quiet;
+        quiet.quiet = true;
+        run({"chown", "--reference=" + fs::path(folder).parent_path().string(), folder}, quiet);
+    }
+    return true;
+}
+
 bool write_blob(const fs::path& path, const iso_embed::Blob& blob) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) return false;
@@ -42,9 +63,12 @@ bool write_blob(const fs::path& path, const iso_embed::Blob& blob) {
 }
 
 // A shell script run inside the container.
+// `tty` gives the script a real terminal (a pty that follows this terminal): programs such as mksquashfs then draw
+// their own animated progress bar, exactly as in the original tool.
 RunResult in_container(const std::string& name, const std::string& script, const RunOptions& options = {},
-                       const std::vector<std::string>& env = {}) {
+                       const std::vector<std::string>& env = {}, bool tty = false) {
     std::vector<std::string> argv = {"incus", "exec", name};
+    if (tty) argv.push_back("-t");
     for (const auto& e : env) {
         argv.push_back("--env");
         argv.push_back(e);
@@ -112,6 +136,17 @@ bool kernel_name_ok(const std::string& kv) {
 
 }  // namespace
 
+std::string default_iso_folder() {
+    const passwd* user = nullptr;
+    if (const char* sudo_user = std::getenv("SUDO_USER"); sudo_user && *sudo_user) user = ::getpwnam(sudo_user);
+    if (!user) {
+        if (const char* uid = std::getenv("PKEXEC_UID"); uid && *uid) user = ::getpwuid(static_cast<uid_t>(std::strtoul(uid, nullptr, 10)));
+    }
+    if (user && user->pw_dir && *user->pw_dir) return std::string(user->pw_dir) + "/Downloads";
+    std::error_code ec;
+    return fs::current_path(ec).string();
+}
+
 Result create_iso(Options o) {
     if (!is_root()) return fail("This must run as root: sudo cccu iso");
     if (o.name.empty()) o.name = "desktop";
@@ -161,8 +196,8 @@ Result create_iso(Options o) {
     // into a running container is not reliable (the mount can fail), copying a file always works.
     step("Preparing the output folder");
     if (!dry_run()) {
-        fs::create_directories(o.iso_out, ec);
-        if (ec) return fail("cannot create " + o.iso_out + ": " + ec.message());
+        std::string error;
+        if (!ensure_folder(o.iso_out, error)) return fail(error);
     }
     Cleanup cleanup;
     cleanup.name = o.name;
@@ -258,7 +293,15 @@ Result create_iso(Options o) {
                         " --tree-dir " + kWorkDir + "/isotree --level " + std::to_string(o.iso_level) + " --format " + o.iso_format +
                         (o.iso_ram ? " --ram" : " --no-ram") + (o.iso_clean_cache ? " --clean-cache" : " --keep-cache");
     if (!o.iso_tag.empty()) build += " --tag '" + o.iso_tag + "'";
-    if (!in_container(o.name, build, {}, {"CBL_KERNEL=" + kernel, "TERM=" + std::string(color_enabled() ? "xterm-256color" : "dumb")}).ok()) {
+    // The engine always runs on a real terminal (the boot service on VT1, or `cccu iso` in a terminal): it gets a pty
+    // and mksquashfs / mkfs.erofs animate their own progress bar. There is no plain mode.
+    if (!dry_run() && !(::isatty(STDIN_FILENO) && ::isatty(STDOUT_FILENO))) {
+        return fail("The ISO build needs a terminal for its animated progress. Use the service (--on-reboot, or Set up ISO build in the window) or run cccu iso in a terminal.");
+    }
+    RunOptions build_options;
+    build_options.interactive = true;
+    const char* term = std::getenv("TERM");
+    if (!in_container(o.name, build, build_options, {"CBL_KERNEL=" + kernel, std::string("TERM=") + (term && *term ? term : "linux")}, true).ok()) {
         return fail("The ISO build failed (see above; /var/log/claudebackup-linux.log inside the container has the details).");
     }
 
@@ -319,8 +362,8 @@ Result schedule_iso_for_boot(const Options& o, const std::vector<std::string>& a
     if (!dry_run()) {
         if (!incus::daemon_ready()) return fail("Incus is not answering (systemctl status incus).");
         if (!incus::exists(name)) return fail("There is no container named '" + name + "'. See: cccu containers");
-        fs::create_directories(o.iso_out, ec);
-        if (ec) return fail("cannot create " + o.iso_out + ": " + ec.message());
+        std::string error;
+        if (!ensure_folder(o.iso_out, error)) return fail(error);
     }
 
     const auto quote = [](const std::string& s) {
@@ -338,8 +381,13 @@ Result schedule_iso_for_boot(const Options& o, const std::vector<std::string>& a
     for (const auto& a : args) command += " " + quote(a);
     if (std::find(args.begin(), args.end(), "--yes") == args.end()) command += " --yes";
     // A failed build must not trap the next boots: the service always removes itself, and the error stays readable.
-    const std::string wrapper = command + "; rc=$?; if [ $rc -ne 0 ]; then echo; echo \"The ISO build failed (exit $rc). "
-                                          "Log: /var/log/cccu/iso.log - continuing in 30 s.\"; sleep 30; fi; exit $rc";
+    // Success: the PC reboots after a 5 second countdown (the service is switched off first, so it cannot run again).
+    const std::string wrapper =
+        command + "; rc=$?; if [ $rc -ne 0 ]; then echo; echo \"The ISO build failed (exit $rc). "
+                  "Log: /var/log/cccu/iso.log - continuing in 30 s.\"; sleep 30; "
+                  "else rm -f /var/lib/cccu/iso-pending; systemctl disable cccu-iso-boot.service; echo; i=5; "
+                  "while [ $i -gt 0 ]; do printf \"\\rISO created. Rebooting in %d seconds...  \" $i; sleep 1; i=$((i-1)); done; "
+                  "echo; systemctl reboot; fi; exit $rc";
 
     // The login screen waits for the build, like it waits for the first-boot service.
     std::string dm = "sddm.service";
@@ -368,7 +416,7 @@ Result schedule_iso_for_boot(const Options& o, const std::vector<std::string>& a
         "ExecStartPre=-/usr/bin/kill -s RTMIN+21 1\n"
         "ExecStart=/bin/sh -c " + quote(unit_escape(wrapper)) + "\n"
         "ExecStopPost=/usr/bin/rm -f /var/lib/cccu/iso-pending " + dropin + "\n"
-        "ExecStopPost=/usr/bin/systemctl disable cccu-iso-boot.service\n"
+        "ExecStopPost=-/usr/bin/systemctl disable cccu-iso-boot.service\n"
         "ExecStopPost=-/usr/bin/kill -s RTMIN+20 1\n"
         "ExecStopPost=-/usr/bin/systemctl --no-block start getty@tty1.service\n\n"
         "[Install]\n"

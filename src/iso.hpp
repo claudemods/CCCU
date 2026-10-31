@@ -7,6 +7,10 @@
 
 namespace cccu {
 
+// Where ISOs are saved unless told otherwise: Downloads in the home folder of the person who started cccu (sudo /
+// pkexec user), else the current folder.
+std::string default_iso_folder();
+
 // Builds a bootable live ISO of the system inside an Incus container (o.name), with the claudebackup-linux
 // engine running INSIDE the container: it installs the ISO tools and a kernel there when they are missing,
 // builds the ISO, and the finished file lands in the host folder o.iso_out. Arch, Debian, Fedora and openSUSE

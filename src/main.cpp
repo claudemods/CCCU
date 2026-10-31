@@ -48,7 +48,7 @@ Commands
 
 iso options
   --name <container>        the container to build from (default: desktop)
-  --iso-out <folder>        host folder that receives the ISO (default: the current folder)
+  --iso-out <folder>        host folder that receives the ISO (default: Downloads in your home folder)
   --iso-name <file>         ISO file name (default: claudebackup-<distro>-<date>.iso)
   --iso-level <1-22>        squashfs zstd level (default 3)
   --iso-format squashfs|erofs
@@ -290,7 +290,7 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
         for (const auto& a : original_args) {
             if (a != "--on-reboot" && a != "--on-console" && a != "--dry-run") rest.push_back(a);
         }
-        if (o.iso_out.empty()) o.iso_out = std::filesystem::current_path().string();
+        if (o.iso_out.empty()) o.iso_out = default_iso_folder();
         if (std::find(rest.begin(), rest.end(), "--iso-out") == rest.end()) {
             rest.push_back("--iso-out");
             rest.push_back(o.iso_out);
@@ -356,7 +356,7 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
     };
 
     if (command == "iso") {
-        if (o.iso_out.empty()) o.iso_out = std::filesystem::current_path().string();
+        if (o.iso_out.empty()) o.iso_out = default_iso_folder();
         set_total_steps(7);
         return finish(create_iso(o));
     }

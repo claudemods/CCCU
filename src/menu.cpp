@@ -2,6 +2,7 @@
 
 #include "bootstrap.hpp"
 #include "containers.hpp"
+#include "iso.hpp"
 #include "proc.hpp"
 #include "sources.hpp"
 #include "util.hpp"
@@ -505,7 +506,7 @@ bool settings(Mode mode, Options& o, Flags& flags) {
     // Sensible defaults, so only the real decisions are red.
     if (o.name.empty()) o.name = "desktop";
     if (mode == Mode::Export && o.export_path.empty()) o.export_path = "desktop.tar.zst";
-    if (mode == Mode::Iso && o.iso_out.empty()) o.iso_out = fs::current_path().string();
+    if (mode == Mode::Iso && o.iso_out.empty()) o.iso_out = default_iso_folder();
     if (!flags.compress_given) {
         o.compression = "zstd:22";
         flags.compress_given = true;

@@ -160,7 +160,7 @@ inline std::vector<Step> build(const Context& c) {
     }});
 
     // 18. .disk metadata, ISO, optional symlink
-    steps.push_back({"xorriso", "ISO packaging", [&c]() {
+    steps.push_back({"xorriso", "Creating the ISO", [&c]() {
         native::writeDotDisk(c);
         if (!native::runXorriso(c)) return false;
         if (!c.symlinkIsoPath.empty())

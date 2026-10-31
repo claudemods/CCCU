@@ -581,61 +581,25 @@ inline void drawErofsBar(int percentage, int spinnerChar, int secs, const std::s
     std::cout << "\r" << COLOR_GREEN << "[" << bar << "] " << pct << extra << COLOR_RESET << std::flush;
 }
 
-// Bytes in use on the file system of `path` (the clone of "/"): what mkfs.erofs has to read, about.
-inline unsigned long long usedBytesOf(const std::string& path) {
-    struct statvfs s;
-    if (statvfs(path.c_str(), &s) != 0) return 0;
-    return static_cast<unsigned long long>(s.f_blocks - s.f_bfree) * s.f_frsize;
-}
-
-// Bytes mkfs.erofs has read so far (its /proc/<pid>/io), 0 when it cannot be found
-inline unsigned long long erofsBytesRead() {
-    const std::string pid = captureCommand("pgrep -n mkfs.erofs 2>/dev/null");
-    if (pid.empty() || pid.find_first_not_of("0123456789") != std::string::npos) return 0;
-    for (const auto& line : splitLines(readFile("/proc/" + pid + "/io")))
-        if (startsWith(line, "rchar:")) return strtoull(line.c_str() + 6, nullptr, 10);
-    return 0;
-}
-
-inline int runWithErofsBar(const std::string& cmd, const std::string& output, const std::string& logFile, const std::string& srcDir = "") {
+inline int runWithErofsBar(const std::string& cmd, const std::string& output, const std::string& logFile) {
     std::atomic<bool> done(false);
     int rc = 0;
     std::thread worker([&] { rc = runCommand(cmd + " > " + shq(logFile) + " 2>&1"); done = true; });
 
-    // Run by CCCU (output is a pipe, not a terminal): report the progress as "@@PROGRESS" lines, which CCCU draws as
-    // its live progress line / the window's bar. The percentage is the share of the system read so far.
-    const bool piped = !isatty(STDOUT_FILENO);
-    const unsigned long long total = piped ? usedBytesOf(srcDir.empty() ? "/" : srcDir) : 0;
-
-    if (!piped) std::cout << "\033[?25l";   // hide the cursor while drawing
+    std::cout << "\033[?25l";   // hide the cursor while drawing
     auto start = std::chrono::steady_clock::now();
-    int spinnerChar = 0, frame = 0, lastPct = -1, tick = 0;
+    int spinnerChar = 0, frame = 0;
     while (!done) {
         int secs = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count());
-        if (piped) {
-            if (tick++ % 10 == 0) {   // once a second
-                const unsigned long long read = total ? erofsBytesRead() : 0;
-                int pct = (total && read) ? static_cast<int>(std::min<unsigned long long>(99, read * 100 / total)) : std::min(60, std::max(1, secs / 10));
-                if (pct < lastPct) pct = lastPct;
-                lastPct = pct;
-                std::cout << "@@PROGRESS " << pct << " erofs  " << humanSize(output) << std::endl;
-            }
-        } else {
-            int pct = std::min(60, std::max(1, secs / 10));
-            if (++frame >= 3) { frame = 0; spinnerChar++; }
-            drawErofsBar(pct, spinnerChar, secs, humanSize(output));
-        }
+        int pct = std::min(60, std::max(1, secs / 10));
+        if (++frame >= 3) { frame = 0; spinnerChar++; }
+        drawErofsBar(pct, spinnerChar, secs, humanSize(output));
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     worker.join();
     int secs = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count());
-    if (piped) {
-        std::cout << "@@PROGRESS " << (rc == 0 ? 100 : std::max(lastPct, 1)) << " erofs  " << humanSize(output) << std::endl;
-    } else {
-        drawErofsBar(rc == 0 ? 100 : std::min(60, std::max(1, secs / 10)), 0, secs, humanSize(output));
-        std::cout << "\033[?25h" << std::endl;
-    }
-    if (rc != 0) {
+    drawErofsBar(rc == 0 ? 100 : std::min(60, std::max(1, secs / 10)), 0, secs, humanSize(output));
+    std::cout << "\033[?25h" << std::endl;    if (rc != 0) {
         runCommand("tail -n 20 " + shq(logFile));
         logError("mkfs.erofs exited with code " + std::to_string(rc) + (rc == 137 ? " (killed - out of memory)" : ""));
         // no error text in the log + a killed process = the kernel's OOM killer
@@ -716,7 +680,7 @@ inline bool runMkerofs(const Context& c, const std::string& dest) {
 
     logNormal("Running: " + cmd);
     logNormal("Creating EROFS image... (mkfs.erofs output: " + STAGING_DIR + "/erofs.log)");
-    bool ok = runWithErofsBar(cmd, dest, STAGING_DIR + "/erofs.log", src) == 0;
+    bool ok = runWithErofsBar(cmd, dest, STAGING_DIR + "/erofs.log") == 0;
     if (ok) logSuccess("EROFS image created: " + dest + " (" + humanSize(dest) + ")");
     logNormal("Unmounting bind mount...");
     if (!unbindRoot(src)) ok = false;
@@ -734,40 +698,6 @@ inline bool squashfsHasCompressor(const std::string& algo) {
                          " -noappend -no-progress -comp " + shq(algo) + " >/dev/null 2>&1") == 0;
     runCommand("rm -rf " + shq(dir));
     return ok;
-}
-
-// Runs a command whose output is NOT a terminal (CCCU runs this engine inside a container through a pipe), so
-// mksquashfs cannot draw its own bar. `cmd` must end with -percentage: mksquashfs then prints the percentage as
-// plain numbers. They are turned into "@@PROGRESS <percent> <label>" lines, which CCCU shows as its live
-// progress line on the console and as the progress bar in the window. Other output is passed through.
-inline int runWithPercent(const std::string& cmd, const std::string& label) {
-    fflush(stdout);
-    FILE* p = popen((cmd + " 2>&1").c_str(), "r");
-    if (!p) return -1;
-    std::string line;
-    int last = -1;
-    auto flushLine = [&]() {
-        if (line.empty()) return;
-        const bool number = line.size() <= 3 && line.find_first_not_of("0123456789") == std::string::npos;
-        if (number) {
-            const int pct = atoi(line.c_str());
-            if (pct != last) {
-                last = pct;
-                std::cout << "@@PROGRESS " << pct << " " << label << std::endl;
-            }
-        } else {
-            std::cout << line << std::endl;
-        }
-        line.clear();
-    };
-    int ch;
-    while ((ch = fgetc(p)) != EOF) {
-        if (ch == '\n' || ch == '\r') flushLine();
-        else line += static_cast<char>(ch);
-    }
-    flushLine();
-    const int status = pclose(p);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 inline bool runMksquashfs(const Context& c, const std::string& dest) {
@@ -804,14 +734,9 @@ inline bool runMksquashfs(const Context& c, const std::string& dest) {
 
     logNormal("Running: " + cmd);
     // mksquashfs draws its progress bar on our terminal: print it in dark green
-    bool ok;
-    if (isatty(STDOUT_FILENO)) {
-        std::cout << COLOR_OUTPUT << std::flush;
-        ok = runCommand(cmd) == 0;
-        std::cout << COLOR_RESET << std::flush;
-    } else {
-        ok = runWithPercent(cmd + " -percentage", "squashfs") == 0;   // run by CCCU: it draws the progress
-    }
+    std::cout << COLOR_OUTPUT << std::flush;
+    bool ok = runCommand(cmd) == 0;
+    std::cout << COLOR_RESET << std::flush;
     logNormal("Unmounting bind mount...");
     if (!unbindRoot(src)) ok = false;
     return ok;
@@ -833,6 +758,39 @@ inline void writeDotDisk(const Context& c) {
     writeFile(dd + "/id/" + uuid, "");
     writeFile(dd + "/README.md",
         "# claudebackup linux " + APP_VERSION + "\n\nVolinfo: " + iso + "\nImage created at: " + ts + "\n");
+}
+
+// The ISO stage. xorriso runs in the background (its output goes to a log) while the same green animated bar as
+// the erofs stage is drawn, headed "Creating the ISO": spinner, elapsed time, the size written so far, and the
+// percentage = size written / size of the tree being packed.
+inline int runIsoWithBar(const std::string& cmd, const std::string& isoPath, const std::string& isoDir, const std::string& logFile) {
+    std::cout << COLOR_GREEN << "Creating the ISO ..." << COLOR_RESET << std::endl;
+    const unsigned long long expected = strtoull(captureCommand("du -sb " + shq(isoDir) + " 2>/dev/null | cut -f1").c_str(), nullptr, 10);
+    std::atomic<bool> done(false);
+    int rc = 0;
+    std::thread worker([&] { rc = runCommand(cmd + " > " + shq(logFile) + " 2>&1"); done = true; });
+
+    std::cout << "\033[?25l";   // hide the cursor while drawing
+    auto start = std::chrono::steady_clock::now();
+    int spinnerChar = 0, frame = 0;
+    while (!done) {
+        int secs = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count());
+        struct stat st;
+        unsigned long long written = stat(isoPath.c_str(), &st) == 0 ? static_cast<unsigned long long>(st.st_size) : 0;
+        int pct = expected ? static_cast<int>(std::min<unsigned long long>(99, written * 100 / expected)) : std::min(60, std::max(1, secs / 10));
+        if (++frame >= 3) { frame = 0; spinnerChar++; }
+        drawErofsBar(pct, spinnerChar, secs, humanSize(isoPath));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    worker.join();
+    int secs = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count());
+    drawErofsBar(rc == 0 ? 100 : 1, 0, secs, humanSize(isoPath));
+    std::cout << "\033[?25h" << std::endl;
+    if (rc != 0) {
+        runCommand("tail -n 20 " + shq(logFile));
+        logError("xorriso exited with code " + std::to_string(rc));
+    }
+    return rc;
 }
 
 // Arch: the original cmiadvanced createISO() xorriso command, unchanged except that it reads the
@@ -868,7 +826,7 @@ inline bool runXorrisoArch(const Context& c) {
     BUILD_DIR;
 
     logNormal("Generating ISO (Hybrid BIOS/UEFI GRUB, claudemods tree): " + c.isoPath);
-    return runCommand(cmd) == 0;
+    return runIsoWithBar(cmd, c.isoPath, BUILD_DIR, STAGING_DIR + "/xorriso.log") == 0;
 }
 
 inline bool runXorriso(const Context& c) {
@@ -895,7 +853,7 @@ inline bool runXorriso(const Context& c) {
     cmd += " -o " + shq(c.isoPath) + " " + shq(c.isoDir);
 
     logNormal(std::string("Generating ISO (") + (hasIsolinux && hasEfi ? "Hybrid BIOS/UEFI" : hasEfi ? "UEFI-only" : "ISO9660") + "): " + c.isoPath);
-    return runCommand(cmd) == 0;
+    return runIsoWithBar(cmd, c.isoPath, c.isoDir, STAGING_DIR + "/xorriso.log") == 0;
 }
 
 // ---------------------------------------------------------------------------
