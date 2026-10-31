@@ -713,7 +713,7 @@ void MainWindow::refreshPartitions(QComboBox* box) {
     QProcess lsblk;
     lsblk.start("lsblk", {"-pnP", "-o", "NAME,SIZE,FSTYPE,LABEL,TYPE"});
     if (!lsblk.waitForFinished(4000)) return;
-    static const QRegularExpression pair(R"((\w+)="([^"]*)")");
+    static const QRegularExpression pair(R"re((\w+)="([^"]*)")re");
     for (const QString& line : QString::fromUtf8(lsblk.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts)) {
         QMap<QString, QString> f;
         for (auto it = pair.globalMatch(line); it.hasNext();) {
