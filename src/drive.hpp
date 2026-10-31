@@ -37,6 +37,13 @@ std::vector<std::string> required_tools(const Options& options);
 // at kTarget. Refuses the drive holding the running system, mounted drives and swap.
 Result prepare(const Options& options, Layout& layout);
 
+// Uses TWO EXISTING partitions instead of a whole drive (options.boot_part, options.root_part), for installing next
+// to another system on the same disk (for example Debian on p1/p2, this system on p3 = boot and p4 = root). Only
+// those two partitions are formatted - boot as FAT32 (the EFI system partition; kept as it is with keep_boot),
+// root as options.fs - and the root is mounted at kTarget. The partition table and the other partitions are not
+// touched. Refuses mounted partitions, the running system and partitions that are too small.
+Result prepare_partitions(const Options& options, Layout& layout);
+
 // Mounts the EFI partition at kTarget/boot/efi (after the system has been unpacked).
 Result mount_efi(const Layout& layout);
 

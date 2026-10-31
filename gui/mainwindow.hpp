@@ -58,10 +58,11 @@ private:
     QWidget* buildContainersPage();
     QWidget* card(const QString& title, const QString& text, QWidget** formHost, Mode mode);
     void buildCommon(Mode mode);
-    void addRow(Mode mode, const QString& label, QWidget* shown, const QList<QWidget*>& watched, bool required,
-                std::function<bool()> isSet, bool wide = false);
+    QWidget* addRow(Mode mode, const QString& label, QWidget* shown, const QList<QWidget*>& watched, bool required,
+                    std::function<bool()> isSet, bool wide = false);
     QWidget* fileRow(QLineEdit* edit, bool save, const QString& filter, bool folder = false);
     void refreshDrives(QComboBox* box);
+    void refreshPartitions(QComboBox* box);
     void refreshContainers();
     int missing(Mode mode) const;
     void refreshStatus();
@@ -84,7 +85,11 @@ private:
     std::array<Common, 2> common_;
 
     // Install
+    QComboBox* targetMode_ = nullptr;   // wipe a whole drive / use two existing partitions
     QComboBox* drive_ = nullptr;
+    QComboBox* bootPart_ = nullptr;
+    QComboBox* rootPart_ = nullptr;
+    QCheckBox* keepBoot_ = nullptr;
     QLineEdit* installImage_ = nullptr;
     QComboBox* hostSource_ = nullptr;
     QLineEdit* hostImage_ = nullptr;

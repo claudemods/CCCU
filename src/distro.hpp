@@ -35,7 +35,9 @@ std::vector<std::string> map_packages(Family family, const std::vector<std::stri
 
 // Shell snippets run inside the host chroot.
 std::string install_missing_script(Family family, const std::vector<std::string>& packages);  // skips installed ones
-std::string initramfs_and_boot_script(Family family);                                        // initramfs + GRUB
+// initramfs + GRUB. The UEFI boot entry is named `bootloader_id`; installing next to another system uses its own
+// name, so the other system's entry stays.
+std::string initramfs_and_boot_script(Family family, const std::string& bootloader_id = "GRUB");
 
 // A system taken from a live ISO still has the live-boot machinery (archiso / casper / live-boot / dracut-live
 // hooks) that looks for the ISO at boot. This removes it, so the initramfs boots from the drive.

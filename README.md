@@ -288,6 +288,26 @@ the tool asks on the terminal.
 | `iso-usb --iso-file <f> --drive <dev>` | write an ISO to a drive |
 | `containers` `duplicate <src> <new> [--switch]` `switch <name>` `start` `stop` | manage the containers |
 
+### Install next to another system (existing partitions)
+
+`--drive` wipes a whole disk. To keep another system on the same disk (say Debian on p1/p2), give two EXISTING
+partitions instead - the window has *Install to > Two existing partitions*, the terminal menu has the same choice:
+
+```bash
+sudo cccu install --boot-part /dev/nvme0n1p3 --root-part /dev/nvme0n1p4 --image desktop.tar.zst \
+     --host-iso my-arch-clone.iso --user alice --size 60 --fs btrfs --yes
+```
+
+Only those two partitions are formatted: the boot one as FAT32 (it is marked as the EFI system partition; `--keep-boot`
+leaves it as it is when it is FAT32 already) and the root one as `--fs`. The partition table and everything else on the
+disk stay untouched, GRUB goes to the boot partition with its own firmware entry named `CCCU` (the other system's entry
+stays), and mounted partitions, the running system and partitions that are too small are refused. To get the other
+system into the new GRUB menu, install `os-prober` in the new system and run `grub-mkconfig`.
+
+CCCU can run from an installed Debian, Ubuntu, Fedora or openSUSE as well as from a live ISO: it installs the tools
+it needs (`parted`, `dosfstools`, `squashfs-tools` ...) with the system's own package manager. The tty host can come
+from an ISO made by claudebackup (its `LiveOS/rootfs.img` is found and unpacked like any other live ISO).
+
 ## The tty host system
 
 A drive install needs a small system to run Incus on. "tty host system" in the settings chooses where it comes

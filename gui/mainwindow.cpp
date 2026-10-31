@@ -16,6 +16,7 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMap>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPointer>
@@ -305,16 +306,56 @@ QWidget* MainWindow::buildPage(Mode mode) {
     const auto isFile = [](QLineEdit* edit) { return [edit] { return QFileInfo(absolutize(edit->text())).isFile(); }; };
 
     if (mode == Install) {
+        // The target: a whole drive (wiped), or two EXISTING partitions next to another system (only those are formatted).
+        targetMode_ = new QComboBox;
+        targetMode_->addItem("Wipe a whole drive", "drive");
+        targetMode_->addItem("Two existing partitions (next to another system)", "partitions");
+        addRow(Install, "Install to", targetMode_, {targetMode_}, true, [] { return true; });
+        const auto drivesMode = [this] { return targetMode_->currentData().toString() == "drive"; };
+
+        const auto comboWithRefresh = [this](QComboBox* box, const std::function<void()>& refresh) {
+            auto* row = new QWidget;
+            auto* layout = new QHBoxLayout(row);
+            layout->setContentsMargins(0, 0, 0, 0);
+            auto* button = new QPushButton("Refresh");
+            layout->addWidget(box, 1);
+            layout->addWidget(button);
+            connect(button, &QPushButton::clicked, this, [refresh] { refresh(); });
+            return row;
+        };
+
         drive_ = new QComboBox;
-        auto* driveRow = new QWidget;
-        auto* driveLayout = new QHBoxLayout(driveRow);
-        driveLayout->setContentsMargins(0, 0, 0, 0);
-        auto* refresh = new QPushButton("Refresh");
-        driveLayout->addWidget(drive_, 1);
-        driveLayout->addWidget(refresh);
-        connect(refresh, &QPushButton::clicked, this, [this] { refreshDrives(drive_); });
-        addRow(Install, "Target drive (WIPED)", driveRow, {drive_}, true, [this] { return !drive_->currentData().toString().isEmpty(); });
+        QWidget* driveCell = addRow(Install, "Target drive (WIPED)", comboWithRefresh(drive_, [this] { refreshDrives(drive_); }), {drive_}, true,
+                                    [this, drivesMode] { return !drivesMode() || !drive_->currentData().toString().isEmpty(); });
         refreshDrives(drive_);
+
+        bootPart_ = new QComboBox;
+        QWidget* bootCell = addRow(Install, "Boot partition (FAT32)", comboWithRefresh(bootPart_, [this] { refreshPartitions(bootPart_); }), {bootPart_}, true,
+                                   [this, drivesMode] { return drivesMode() || !bootPart_->currentData().toString().isEmpty(); });
+        rootPart_ = new QComboBox;
+        QWidget* rootCell = addRow(Install, "Root partition (system)", comboWithRefresh(rootPart_, [this] { refreshPartitions(rootPart_); }), {rootPart_}, true,
+                                   [this, drivesMode] {
+                                       return drivesMode() || (!rootPart_->currentData().toString().isEmpty() &&
+                                                               rootPart_->currentData() != bootPart_->currentData());
+                                   });
+        connect(bootPart_, &QComboBox::currentIndexChanged, this, [this] { refreshStatus(); });
+        keepBoot_ = new QCheckBox("Keep it as it is (already FAT32)");
+        keepBoot_->setToolTip("Off: the boot partition is formatted FAT32. Only these two partitions are touched.");
+        QWidget* keepCell = addRow(Install, "Boot partition data", keepBoot_, {keepBoot_}, false, [this] { return keepBoot_->isChecked(); });
+        refreshPartitions(bootPart_);
+        refreshPartitions(rootPart_);
+        bootPart_->setCurrentIndex(-1);
+        rootPart_->setCurrentIndex(-1);
+
+        const auto applyTarget = [=] {
+            const bool drivesOnly = drivesMode();
+            driveCell->setVisible(drivesOnly);
+            bootCell->setVisible(!drivesOnly);
+            rootCell->setVisible(!drivesOnly);
+            keepCell->setVisible(!drivesOnly);
+        };
+        connect(targetMode_, &QComboBox::currentIndexChanged, this, [applyTarget] { applyTarget(); });
+        applyTarget();
 
         installImage_ = new QLineEdit;
         installImage_->setPlaceholderText("Desktop image made with --export");
@@ -634,8 +675,8 @@ QWidget* MainWindow::buildContainersPage() {
     return page;
 }
 
-void MainWindow::addRow(Mode mode, const QString& label, QWidget* shown, const QList<QWidget*>& watched, bool required,
-                        std::function<bool()> isSet, bool wide) {
+QWidget* MainWindow::addRow(Mode mode, const QString& label, QWidget* shown, const QList<QWidget*>& watched, bool required,
+                            std::function<bool()> isSet, bool wide) {
     PageData& page = data_[mode];
     auto* cell = new QWidget;
     auto* h = new QHBoxLayout(cell);
@@ -663,6 +704,28 @@ void MainWindow::addRow(Mode mode, const QString& label, QWidget* shown, const Q
         } else if (auto* b = qobject_cast<QCheckBox*>(w)) connect(b, &QCheckBox::toggled, this, [this] { refreshStatus(); });
         else if (auto* s = qobject_cast<QSpinBox*>(w)) connect(s, &QSpinBox::valueChanged, this, [this] { refreshStatus(); });
     }
+    return cell;
+}
+
+// Existing partitions (for installing next to another system): name, size, file system and label.
+void MainWindow::refreshPartitions(QComboBox* box) {
+    box->clear();
+    QProcess lsblk;
+    lsblk.start("lsblk", {"-pnP", "-o", "NAME,SIZE,FSTYPE,LABEL,TYPE"});
+    if (!lsblk.waitForFinished(4000)) return;
+    static const QRegularExpression pair(R"((\w+)="([^"]*)")");
+    for (const QString& line : QString::fromUtf8(lsblk.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts)) {
+        QMap<QString, QString> f;
+        for (auto it = pair.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            f[m.captured(1)] = m.captured(2);
+        }
+        if (f.value("TYPE") != "part") continue;
+        QString label = QString("%1   %2   %3   %4").arg(f.value("NAME"), f.value("SIZE"), f.value("FSTYPE"), f.value("LABEL")).trimmed();
+        label.replace("\\x20", " ");
+        box->addItem(label, f.value("NAME"));
+    }
+    box->setCurrentIndex(-1);
 }
 
 QWidget* MainWindow::fileRow(QLineEdit* edit, bool save, const QString& filter, bool folder) {
@@ -796,8 +859,14 @@ QStringList MainWindow::buildArgs(Mode mode) const {
         const QString user = c.user->text().trimmed();
         const QString containerUser = c.containerUser->text().trimmed().isEmpty() ? user : c.containerUser->text().trimmed();
         if (mode == Install) {
-            args << "install" << "--drive" << drive_->currentData().toString() << "--image" << absolutize(installImage_->text())
-                 << "--hostname" << hostname_->text().trimmed() << "--fs" << fs_->currentText();
+            args << "install";
+            if (targetMode_->currentData().toString() == "partitions") {
+                args << "--boot-part" << bootPart_->currentData().toString() << "--root-part" << rootPart_->currentData().toString();
+                if (keepBoot_->isChecked()) args << "--keep-boot";
+            } else {
+                args << "--drive" << drive_->currentData().toString();
+            }
+            args << "--image" << absolutize(installImage_->text()) << "--hostname" << hostname_->text().trimmed() << "--fs" << fs_->currentText();
             if (hostSource_->currentIndex() == 1) args << "--clone-system";
             if (hostSource_->currentIndex() == 2) args << "--host-image" << absolutize(hostImage_->text());
             if (hostSource_->currentIndex() == 3) args << "--host-iso" << absolutize(hostImage_->text());
@@ -821,11 +890,14 @@ void MainWindow::start() {
     if (mode == Containers || missing(mode) != 0 || running_) return;
 
     if (mode == Install) {
-        const QString drive = drive_->currentData().toString();
+        const bool partitions = targetMode_->currentData().toString() == "partitions";
+        const QString drive = partitions ? rootPart_->currentData().toString() : drive_->currentData().toString();
+        const QString warning = partitions
+            ? QString("The ROOT partition %1 will be formatted%2.\nOnly these two partitions are touched; the rest of the disk stays as it is.\n\n"
+                      "Type the ROOT partition path to confirm:").arg(drive, keepBoot_->isChecked() ? "" : QString(" and so will the boot partition %1").arg(bootPart_->currentData().toString()))
+            : QString("ALL DATA on %1 will be destroyed.\n\nType the device path to confirm:").arg(drive);
         bool accepted = false;
-        const QString typed = QInputDialog::getText(this, "Confirm the wipe",
-                                                    QString("ALL DATA on %1 will be destroyed.\n\nType the device path to confirm:").arg(drive),
-                                                    QLineEdit::Normal, QString(), &accepted);
+        const QString typed = QInputDialog::getText(this, "Confirm", warning, QLineEdit::Normal, QString(), &accepted);
         if (!accepted || typed.trimmed() != drive) return;
     } else if (mode == Export) {
         // Ask where the image goes, every time: the chosen file is what gets written.

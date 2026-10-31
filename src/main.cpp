@@ -63,6 +63,10 @@ iso options
 
 install options
   --drive <dev>             drive to wipe, e.g. /dev/sda or /dev/nvme0n1
+  --boot-part <dev>         ... OR install next to another system, into two EXISTING partitions: this one becomes
+  --root-part <dev>         the boot (FAT32 / EFI) partition and this one the system, e.g. /dev/nvme0n1p3 and
+                            /dev/nvme0n1p4. Only these two are formatted. Can run from Debian, Ubuntu ... too.
+  --keep-boot               do not format the boot partition (it is FAT32 already)
   --fs ext4|btrfs           system partition filesystem (default: ext4)
   --image <file>            desktop image (squashfs/erofs/tar) made with --export
   --host-image <file>       tty host system image (default: the live ISO's own root image)
@@ -172,6 +176,12 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
             if (!value(o.export_path)) return 2;
         } else if (a == "--drive") {
             if (!value(o.drive)) return 2;
+        } else if (a == "--boot-part") {
+            if (!value(o.boot_part)) return 2;
+        } else if (a == "--root-part") {
+            if (!value(o.root_part)) return 2;
+        } else if (a == "--keep-boot") {
+            o.keep_boot = true;
         } else if (a == "--fs") {
             if (!value(o.fs)) return 2;
             flags.fs_given = true;
@@ -380,8 +390,9 @@ int cccu_main(const std::vector<std::string>& original_args, const std::string& 
     }
 
     if (install_mode) {
-        if (o.drive.empty() || o.image.empty()) {
-            error("Install needs --drive <device> and --image <file> (or use the menu).");
+        const bool has_target = !o.drive.empty() || (!o.boot_part.empty() && !o.root_part.empty());
+        if (!has_target || o.image.empty()) {
+            error("Install needs --drive <device> (wipes it) or --boot-part and --root-part (existing partitions), and --image <file> (or use the menu).");
             return 2;
         }
         if (o.container_size.empty()) {

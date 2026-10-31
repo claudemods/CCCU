@@ -288,13 +288,44 @@ std::vector<Row> rows_for(Mode mode, Options& o, Flags& flags, std::string& noti
     }
 
     if (mode == Mode::Install) {
-        rows.push_back({"Target drive (WIPED)", o.drive, true, [&o, &notice] {
+        rows.push_back({"Install target", !o.drive.empty() ? "WIPE drive " + o.drive
+                                          : (!o.boot_part.empty() || !o.root_part.empty())
+                                                ? "boot " + (o.boot_part.empty() ? std::string("?") : o.boot_part) + "  root " + (o.root_part.empty() ? std::string("?") : o.root_part)
+                                                : std::string(),
+                        true, [&o, &notice] {
+            info("");
+            info("Where does the system go?");
+            info("  1) A whole drive - it is WIPED (EFI + system partition)");
+            info("  2) Two existing partitions - boot (FAT32 / EFI) + root; only these two are formatted, the rest of");
+            info("     the disk (another system such as Debian) stays untouched, e.g. nvme0n1p3 = boot, nvme0n1p4 = root");
+            const std::string choice = ask("Choose (1-2)");
             RunOptions listing;
             listing.mutating = false;
-            run({"lsblk", "-d", "-o", "NAME,SIZE,MODEL,TRAN"}, listing);
-            const std::string answer = ask("Drive to WIPE and install onto (e.g. /dev/sda)", o.drive);
-            if (answer.rfind("/dev/", 0) == 0) o.drive = answer;
-            else notice = "A drive is a device path such as /dev/sda or /dev/nvme0n1.";
+            if (choice == "1") {
+                run({"lsblk", "-d", "-o", "NAME,SIZE,MODEL,TRAN"}, listing);
+                const std::string answer = ask("Drive to WIPE and install onto (e.g. /dev/sda)", o.drive);
+                if (answer.rfind("/dev/", 0) == 0) {
+                    o.drive = answer;
+                    o.boot_part.clear();
+                    o.root_part.clear();
+                } else {
+                    notice = "A drive is a device path such as /dev/sda or /dev/nvme0n1.";
+                }
+            } else if (choice == "2") {
+                run({"lsblk", "-o", "NAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS"}, listing);
+                const std::string boot = ask("BOOT partition (FAT32 / EFI), e.g. /dev/nvme0n1p3", o.boot_part);
+                const std::string root = ask("ROOT partition (the system), e.g. /dev/nvme0n1p4", o.root_part);
+                if (boot.rfind("/dev/", 0) == 0 && root.rfind("/dev/", 0) == 0 && boot != root) {
+                    o.boot_part = boot;
+                    o.root_part = root;
+                    o.drive.clear();
+                    o.keep_boot = !confirm("Format the boot partition (no = keep it, it must be FAT32 already)?", true);
+                } else {
+                    notice = "Give two different partition paths such as /dev/nvme0n1p3 and /dev/nvme0n1p4.";
+                }
+            } else if (!choice.empty()) {
+                notice = "Type 1 or 2.";
+            }
         }});
         rows.push_back({"Desktop image", o.image, true, [&o, &notice] {
             const std::string answer = ask("Path to the desktop image made with --export", o.image);

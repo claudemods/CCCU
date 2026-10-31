@@ -35,6 +35,9 @@ struct Options {
     Method method = Method::Auto;
 
     std::string drive;                     // --drive: wipe this disk and keep the container on it
+    std::string boot_part;                 // --boot-part: install to existing partitions instead of a whole drive: boot (FAT32 / EFI)
+    std::string root_part;                 // --root-part: ... and the system partition
+    bool keep_boot = false;                // --keep-boot: do not format the boot partition (it is FAT32 already)
     std::string fs = "ext4";            // filesystem for --drive: btrfs or ext4
     std::string pool;                      // empty = detect
     std::string incus_dir = "/var/lib/incus";

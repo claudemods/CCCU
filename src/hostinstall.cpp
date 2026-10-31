@@ -86,16 +86,32 @@ Result install_packages(const std::vector<std::string>& packages) {
     return {};
 }
 
-// The live ISO is Arch, so pacman is the way to get missing tools.
+// The system CCCU runs on needs the formatting / unpacking tools. On an Arch live ISO that is pacman; on any other
+// system (an installed Debian, Ubuntu, Fedora, openSUSE) the system's own package manager is used, so installing
+// another system from an installed one works the same.
 Result install_live_tools(const std::vector<std::string>& tools) {
     std::vector<std::string> wanted;
     for (const auto& tool : tools) {
         if (!have_command(tool)) wanted.push_back(package_for(tool));
     }
-    const auto missing = missing_packages(wanted);
-    if (missing.empty()) return {};
-    step("Installing tools in the live environment");
-    return install_packages(missing);
+    if (wanted.empty()) return {};
+    if (have_command("pacman")) {
+        const auto missing = missing_packages(wanted);
+        if (missing.empty()) return {};
+        step("Installing tools in the running system");
+        return install_packages(missing);
+    }
+    const distro::Info host = distro::detect("/");
+    std::string list;
+    for (const auto& w : wanted) list += (list.empty() ? "" : " ") + w;
+    if (host.family == distro::Family::Unsupported) {
+        return fail("This system (" + host.name + ") has no supported package manager for CCCU to install the tools with; install them yourself: " + list);
+    }
+    step("Installing tools in the running system (" + host.name + ")");
+    if (!run({"bash", "-c", distro::install_missing_script(host.family, distro::map_packages(host.family, wanted))}).ok()) {
+        return fail("the package manager could not install: " + list);
+    }
+    return {};
 }
 
 Result in_chroot(const std::string& script) {
@@ -213,7 +229,11 @@ Result stage_desktop(const Options& o) {
 
 Result install_to_drive(Options o) {
     if (!is_root()) return fail("This must run as root from the live environment.");
-    if (o.drive.empty()) return fail("--drive <device> is required, e.g. --drive /dev/sda");
+    // Either a whole drive (wiped) or two existing partitions (boot + root, next to another system).
+    const bool partitions = !o.boot_part.empty() || !o.root_part.empty();
+    if (partitions && !o.drive.empty()) return fail("Use either --drive (wipes a whole drive) or --boot-part with --root-part, not both.");
+    if (partitions && (o.boot_part.empty() || o.root_part.empty())) return fail("Partition install needs both --boot-part <dev> and --root-part <dev>.");
+    if (!partitions && o.drive.empty()) return fail("--drive <device> is required, e.g. --drive /dev/sda (or --boot-part and --root-part)");
     if (o.name.empty()) o.name = "desktop";
     std::error_code ec;
     if (o.image.empty() || !fs::is_regular_file(o.image, ec)) return fail("--image <desktop image> is required (made with --export)");
@@ -256,7 +276,7 @@ Result install_to_drive(Options o) {
 
     drive::Layout layout;
     MountGuard guard;
-    if (auto r = drive::prepare(o, layout); !r) return r;
+    if (auto r = partitions ? drive::prepare_partitions(o, layout) : drive::prepare(o, layout); !r) return r;
 
     step("Installing the host system");
     if (o.clone_system) {
@@ -366,7 +386,12 @@ Result install_to_drive(Options o) {
     }
 
     step("Installing the bootloader");
-    if (auto r = in_chroot(distro::initramfs_and_boot_script(base.family)); !r) return r;
+    // Next to another system the UEFI entry gets its own name ("CCCU"): the other system's entry is not replaced.
+    if (auto r = in_chroot(distro::initramfs_and_boot_script(base.family, partitions ? "CCCU" : "GRUB")); !r) return r;
+    if (partitions) {
+        info("The firmware menu now lists \"CCCU\" next to the other system. To get the other system in this GRUB menu,");
+        info("install os-prober in the new system and run grub-mkconfig (not done automatically).");
+    }
 
     step("Set the root password for the new host (tty login)");
     if (!o.root_password.empty()) {

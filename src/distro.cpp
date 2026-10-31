@@ -164,8 +164,8 @@ std::string install_missing_script(Family family, const std::vector<std::string>
     return script;
 }
 
-std::string initramfs_and_boot_script(Family family) {
-    const std::string efi = "--target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --recheck";
+std::string initramfs_and_boot_script(Family family, const std::string& bootloader_id) {
+    const std::string efi = "--target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=" + bootloader_id + " --recheck";
     switch (family) {
         case Family::Debian:
             return "set -e\nupdate-initramfs -u -k all\ngrub-install " + efi + "\nupdate-grub\n";
