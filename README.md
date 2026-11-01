@@ -23,6 +23,8 @@
 
   ## [ Support Me ](https://www.paypal.com/paypalme/claudemods?country.x=GB&locale)
 
+> project merged into claude codex; newer updates will be in the new project
+
 </div>
 
 # CCCU - Claudemods Container Creator Utility
